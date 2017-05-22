@@ -65,6 +65,7 @@ architecture Behavioral of sdmapper is
 	-- SPI port
 	signal sd_cs_s			: std_logic;
 	signal sd_addr_s		: std_logic;
+	signal spi_ctrl_rd_s	: std_logic;
 	signal sd_chg_q		: std_logic_vector(1 downto 0);
 	signal flags_s			: std_logic_vector(7 downto 0);
 
@@ -87,6 +88,7 @@ begin
 		data_bus_io		=> data_bus_io,
 		wr_n_i			=> wr_n_i,
 		rd_n_i			=> rd_n_i,
+		ctrl_rd_o		=> spi_ctrl_rd_s,
 		-- SD card interface
 		sd_cs_n_o		=> sd_cs_n_o,
 		sd_sclk_o		=> sd_sclk_o,
@@ -153,18 +155,18 @@ begin
 	flags_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
 
 	-- Disk change FFs
-	process (reset_n_i, sd_addr_s, sd_pres_n_i(0))
+	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(0))
 	begin
-		if reset_n_i = '0' or sd_addr_s = '1' then
+		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
 			sd_chg_q(0) <= '0';
 		elsif falling_edge(sd_pres_n_i(0)) then
 			sd_chg_q(0) <= '1';
 		end if;
 	end process;
 
-	process (reset_n_i, sd_addr_s, sd_pres_n_i(1))
+	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(1))
 	begin
-		if reset_n_i = '0' or sd_addr_s = '1' then
+		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
 			sd_chg_q(1) <= '0';
 		elsif falling_edge(sd_pres_n_i(1)) then
 			sd_chg_q(1) <= '1';
@@ -220,7 +222,7 @@ begin
 	-- 7E00 = 0111 1110
 	-- 7F00 = 0111 1111
 
-	sd_cs_s	<= '1'  when sltsl_rom_n_s = '0' and addr_bus_i >= X"7B00" and addr_bus_i <= X"7F00"   else
+	sd_cs_s	<= '1'  when sltsl_rom_n_s = '0' and rom_bank1_q = "111" and addr_bus_i >= X"7B00" and addr_bus_i <= X"7F00"   else
 	            '0';
 
 	sd_addr_s	<= '1' when addr_bus_i(10 downto 8) = "111" and sd_cs_s = '1'	else
