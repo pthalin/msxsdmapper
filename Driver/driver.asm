@@ -10,6 +10,22 @@
 ; SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.
 ; Please see the CERN OHL v.1.1 for applicable conditions
 
+; Technical info:
+; 7B00h~7EFFh   : SPI data transfer window (read/write)
+; 7F00h         : Interface status and card select register (read/write)
+;       <read>
+;       b0      : 1=SD Card on slot-0 changed since last read
+;       b1      : 1=SD Card on slot-1 changed since last read
+;       b2      : 0=SD card present on slot-0
+;       b3      : 0=SD card present on slot-1
+;       b4      : 0=Write protecton enabled for SD card slot-0
+;       b5      : 0=Write protecton enabled for SD card slot-1
+;       b6      : SW0 status. 0=RAM disabled, 1=RAM enabled
+;       b7      : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+;       <write>
+;       b0      : SD card slot-0 chip-select (0=selected)
+;       b1      : SD card slot-1 chip-select (0=selected)
+
 	output	"driver.bin"
 
 ; Enderecos ROM
@@ -22,9 +38,8 @@ LINLEN		= $F3B0
 
 ; Enderecos SPI
 
-CHAVEIASPI	= $6001
-PORTCFG		= $4800
-PORTSPI		= $4000
+PORTCFG		= $7F00
+PORTSPI		= $7B00
 
 ; Comandos SPI:
 CMD0	= 0  | $40
@@ -266,11 +281,6 @@ DRV_TIMI:
 	ret
 
 
-; pula regiao da porta SPI
-
-	ds	$4800-$, $FF
-
-
 ;-----------------------------------------------------------------------------
 ;
 ; Driver initialization routine, it is called twice:
@@ -314,13 +324,12 @@ DRV_INIT:
 	ld		de, strTitulo				; imprimir titulo
 	call	printString
 	ld		de, strMr_mp_desativada
-	call	modoSPI
 	ld		a, (PORTCFG)				; testar se mapper/megaram esta ativa
-	and		$10
+	and		$40
 	jr z,	.print						; desativada, pula
 	ld		de, strMapper
 	ld		a, (PORTCFG)				; ativa, testar se eh mapper ou megaram
-	and		$20
+	and		$80
 	jr nz,	.print
 	ld		de, strMegaram				; Megaram ativa
 .print:
@@ -335,7 +344,6 @@ DRV_INIT:
 	call	.detecta
 	ld		bc, 0
 	ld		e, 5
-	call	modoROM
 .wait:									; esperar um pouco para dar tempo
 	nop									; de ler mensagens
 	dec		bc
@@ -358,6 +366,8 @@ DRV_INIT:
 	ld		a, ' '
 	call	BIOS_CHPUT
 	ld		c, (iy+NUMSD)
+	rlc		c
+	rlc		c							; ......XX => ....XX..
 	ld		a, (PORTCFG)				; testar se cartao esta inserido
 	and		c							; C contem 1 se cartao 1, 2 se cartao 2
 	jr z,	.naoVazio
@@ -539,9 +549,7 @@ leitura:
 	ld		d, a
 	pop		af							; HL = ponteiro destino
 	ld		e, a						; BC DE = 32 bits numero do bloco
-	call	modoSPI
 	call	LerBloco					; chamar rotina de leitura de dados
-	call	modoROM
 	jr nc,	.ok
 	call	marcaErroCartao				; ocorreu erro na leitura, marcar erro
 ;	ld		a, ENRDY					; Not ready
@@ -575,9 +583,7 @@ escrita:
 	ld		d, a
 	pop		af							; HL = ponteiro destino
 	ld		e, a						; BC DE = 32 bits numero do bloco
-	call	modoSPI
 	call	GravarBloco					; chamar rotina de gravacao de dados
-	call	modoROM
 	jr nc,	.ok2
 	call	marcaErroCartao				; ocorreu erro, marcar nas flags
 	ld		a, EWRERR					; Write error
@@ -767,17 +773,17 @@ DEV_STATUS:
 	pop		af
 	ld		(iy+NUMSD), a				; salva numero do device atual (1 ou 2)
 	ld		c, a
-	call	modoSPI
+	push	bc
+	rlc		c
+	rlc		c							; ......XX => ....XX..
 	ld		a, (PORTCFG)				; testar se cartao esta inserido
-	call	modoROM
 	and		c							; C contem 1 se cartao 1, 2 se cartao 2
+	pop		bc
 	jr nz,	.cartaoComErro				; se slot do cartao estiver vazio, marcamos o erro nas flags
 	ld		a, (iy+FLAGSCARTAO)			; testar bit de erro do cartao nas flags
 	and		c
 	jr z,	.semMudanca					; cartao nao marcado com erro, pula
-	call	modoSPI
 	call	detectaCartao				; erro na deteccao do cartao, tentar re-detectar
-	call	modoROM
 	jr c,	.cartaoComErro				; nao conseguimos detectar, sai com erro
 	ld		a, (iy+NUMSD)				; conseguimos detectar, tira erro nas flags
 	cpl									; inverte bits para fazer o AND
@@ -899,7 +905,6 @@ pegaWorkArea:
 	ex		af, af'
 	xor		a
 	ld		ix, GWORK
-	call	modoROM
 	call	CALBNK
 	ld		l, (ix)			; em HL tem o ponteiro da nossa area da RAM
 	ld		h, (ix+1)
@@ -920,11 +925,13 @@ testaCartao:
 	pop		af
 	ld		(iy+NUMSD), a				; salva numero do device atual (1 ou 2)
 	ld		c, a
-	call	modoSPI
+	push	bc
+	rlc		c
+	rlc		c							; ......XX => ....XX..
 	ld		a, (PORTCFG)				; testar se cartao esta inserido
-	call	modoROM
 	and		c							; C contem 1 se cartao 1, 2 se cartao 2
-	jr nz,	.saicomerro				
+	pop		bc
+	jr nz,	.saicomerro
 	ld		a, (iy+FLAGSCARTAO)			; testar bit de erro do cartao nas flags
 	and		c
 	jr z,	.ok
@@ -958,11 +965,11 @@ marcaErroCartao:
 ;------------------------------------------------
 testaWP:
 	ld		c, (iy+NUMSD)				; cartao atual (1 ou 2)
-	rlc		c							; desloca para apontar para bits 2 ou 3 para cartoes 1 ou 2 respectivamente
 	rlc		c
-	call	modoSPI
+	rlc		c
+	rlc		c
+	rlc		c							; ......XX => ..XX....
 	ld		a, (PORTCFG)				; testar se cartao esta protegido
-	call	modoROM
 	and		c
 	ret									; se A for 0 cartao esta protegido
 
@@ -1601,26 +1608,6 @@ blocoParaByte:
 ; ------------------------------------------------
 ; Funcoes utilitarias
 ; ------------------------------------------------
-
-; ------------------------------------------------
-; Chaveia para modo SPI
-; ------------------------------------------------
-modoSPI:
-	push	af
-	ld		a, 1
-	ld		(CHAVEIASPI), a
-	pop		af
-	ret
-
-; ------------------------------------------------
-; Chaveia para modo ROM
-; ------------------------------------------------
-modoROM:
-	push	af
-	ld		a, 0
-	ld		(CHAVEIASPI), a
-	pop		af
-	ret
 
 ; ------------------------------------------------
 ; Imprime string na tela apontada por DE

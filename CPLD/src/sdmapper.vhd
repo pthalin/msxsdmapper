@@ -16,45 +16,37 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use ieee.std_logic_misc.all;			-- AND_REDUCE
 
 entity sdmapper is
-	generic (
-		dividirclock	: boolean := FALSE
-	);
 	port(
-		clock				: in    std_logic;
-		reset_n			: in    std_logic;
-		dis_mapper		: in    std_logic;
-		mr_mp				: in    std_logic;								-- 1 = mapper
-
-		-- CPU interface
-		addr_bus			: in    std_logic_vector(15 downto 0);
-		data_bus			: inout std_logic_vector(7 downto 0);
-		wr_n				: in    std_logic;
-		rd_n				: in    std_logic;
-		iorq_n			: in    std_logic;
-		m1_n				: in    std_logic;
-		sltsl_n			: in    std_logic;
-		busdir_n			: out   std_logic;
-
+		clock_i			: in    std_logic;
+		reset_n_i		: in    std_logic;
+		dis_mapper_i	: in    std_logic;								-- 1 = enabled
+		mr_mp_i			: in    std_logic;								-- 1 = mapper
+		-- BUS interface
+		addr_bus_i		: in    std_logic_vector(15 downto 0);
+		data_bus_io		: inout std_logic_vector(7 downto 0);
+		wr_n_i			: in    std_logic;
+		rd_n_i			: in    std_logic;
+		iorq_n_i			: in    std_logic;
+		m1_n_i			: in    std_logic;
+		sltsl_n_i		: in    std_logic;
+		busdir_n_o		: out   std_logic;
 		-- ROM interface
-		rom_a				: out   std_logic_vector(16 downto 14);
-		rom_cs			: out   std_logic;
-		rom_we			: out   std_logic;
-
+		rom_a_o			: out   std_logic_vector(16 downto 14);
+		rom_ce_n_o		: out   std_logic;
+		rom_we_n_o		: out   std_logic;
 		-- RAM interface
-		ram_a				: out   std_logic_vector(18 downto 13);
-		ram_cs			: out   std_logic;
-		ram_we			: out   std_logic;
-
+		ram_a_o			: out   std_logic_vector(18 downto 13);
+		ram_cs_o			: out   std_logic;
+		ram_we_o			: out   std_logic;
 		-- SD card interface
-		sd_cs				: out   std_logic_vector(1 downto 0);	-- Saida Chip Select para os cartoes
-		sd_sclk			: out   std_logic;							-- Saida SCK
-		sd_mosi			: out   std_logic;							-- Master Out Slave In
-		sd_miso			: in    std_logic;							-- Master In Slave Out
-		sd_writeprot	: in    std_logic_vector(1 downto 0);	-- 0 = cartao protegido contra escrita
-		sd_inserted		: in    std_logic_vector(1 downto 0)	-- 0 = cartao inserido
+		sd_cs_n_o		: out   std_logic_vector(1 downto 0);
+		sd_sclk_o		: out   std_logic;
+		sd_mosi_o		: out   std_logic;
+		sd_miso_i		: in    std_logic;
+		sd_wp_n_i		: in    std_logic_vector(1 downto 0);	-- 0 = Write protected
+		sd_pres_n_i		: in    std_logic_vector(1 downto 0)	-- 0 = SD Card present
 	);
 
 end sdmapper;
@@ -62,179 +54,180 @@ end sdmapper;
 architecture Behavioral of sdmapper is
 
 	signal io_cs	  		: std_logic;
-	signal fw_en			: std_logic;
-	signal iomapper		: std_logic;
-	signal iomegaram		: std_logic;
+	signal iomapper_s		: std_logic;
+	signal iomegaram_s	: std_logic;
 	signal ffff				: std_logic;
 	signal sltsl_c			: std_logic;
 	signal slt_exp_n		: std_logic_vector(3 downto 0);
-	signal sltsl_rom		: std_logic;
-	signal sltsl_ram		: std_logic;
+	signal sltsl_rom_n_s	: std_logic;
+	signal sltsl_ram_n_s	: std_logic;
 
-	-- Porta SPI
-	signal sd_en			: std_logic;		-- '0' acessa ROM, '1' acessa porta SPI (4000-42FF e 4800)
-	signal sd_addr			: std_logic;
-	signal sd_pcs			: std_logic;
-	signal sd_chav			: std_logic;
-	signal clock_sd		: std_logic;
+	-- SPI port
+	signal sd_cs_s			: std_logic;
+	signal sd_addr_s		: std_logic;
+	signal sd_chg_q		: std_logic_vector(1 downto 0);
+	signal flags_s			: std_logic_vector(7 downto 0);
 
-	-- flash
-	signal rom_chav		: std_logic;
-	signal mr_addr			: std_logic_vector(2 downto 0);
-	signal rom_rd1			: std_logic;
-	signal rom_rd2			: std_logic;
-	signal rom_rd			: std_logic;
-	signal rom_wr			: std_logic;
-	signal rom_wr_en		: std_logic;
-	signal rom_adhi		: std_logic_vector(2 downto 0);
+	-- Flash ASCII16
+	signal rom_bank_wr_s	: std_logic;
+	signal rom_bank1_q	: std_logic_vector(2 downto 0);
+	signal rom_bank2_q	: std_logic_vector(2 downto 0);
 
 begin
 
 	-- Porta SPI
-	portaspi: entity work.sd
+	portaspi: entity work.spi
 	port map (
-		clock				=> clock_sd,
-		reset_n			=> reset_n,
-		dis_mapper		=> dis_mapper,
-		mr_mp				=> mr_mp,
+		clock_i			=> clock_i,
+		reset_n_i		=> reset_n_i,
+		flags_i			=> flags_s,
 		-- CPU interface
-		cs					=> sd_pcs,
-		addr_bus			=> sd_addr,
-		data_bus			=> data_bus,
-		wr_n				=> wr_n,
-		rd_n				=> rd_n,
+		cs_i				=> sd_cs_s,
+		addr_bus_i		=> sd_addr_s,
+		data_bus_io		=> data_bus_io,
+		wr_n_i			=> wr_n_i,
+		rd_n_i			=> rd_n_i,
 		-- SD card interface
-		sd_cs				=> sd_cs,
-		sd_sclk			=> sd_sclk,
-		sd_mosi			=> sd_mosi,
-		sd_miso			=> sd_miso,
-		sd_writeprot	=> sd_writeprot,
-		sd_inserted		=> sd_inserted
+		sd_cs_n_o		=> sd_cs_n_o,
+		sd_sclk_o		=> sd_sclk_o,
+		sd_mosi_o		=> sd_mosi_o,
+		sd_miso_i		=> sd_miso_i
 	);
 
 	-- Expansor de slot
 	exp: entity work.exp_slot
 	port map (
-		reset_n		=> reset_n,
+		reset_n		=> reset_n_i,
 		sltsl_n		=> sltsl_c,
-		cpu_rd_n		=> rd_n,
-		cpu_wr_n		=> wr_n,
+		cpu_rd_n		=> rd_n_i,
+		cpu_wr_n		=> wr_n_i,
 		ffff			=> ffff,
-		cpu_a			=> addr_bus(15 downto 14),
-		cpu_d			=> data_bus,
+		cpu_a			=> addr_bus_i(15 downto 14),
+		cpu_d			=> data_bus_io,
 		exp_n			=> slt_exp_n
 	);
 
 	-- Mapper
 	mpmr: entity work.megamapper
 	port map (
-		reset_n		=> reset_n,
-		cpu_a			=> addr_bus,
-		cpu_d			=> data_bus,
-		mr_mp			=> mr_mp,
-		ioFx			=> iomapper,
-		io8x			=> iomegaram,
-		cpu_rd_n		=> rd_n,
-		cpu_wr_n		=> wr_n,
-		sltsl_n		=> sltsl_ram,
-		sram_ma		=> ram_a,
-		sram_cs_n	=> ram_cs,
-		sram_we_n	=> ram_we,
-		busdir_n		=> busdir_n
+		reset_n		=> reset_n_i,
+		cpu_a			=> addr_bus_i,
+		cpu_d			=> data_bus_io,
+		mr_mp			=> mr_mp_i,
+		ioFx			=> iomapper_s,
+		io8x			=> iomegaram_s,
+		cpu_rd_n		=> rd_n_i,
+		cpu_wr_n		=> wr_n_i,
+		sltsl_n		=> sltsl_ram_n_s,
+		sram_ma		=> ram_a_o,
+		sram_cs_n	=> ram_cs_o,
+		sram_we_n	=> ram_we_o,
+		busdir_n		=> busdir_n_o
 	);
 
 	-- Glue Logic
 
-	-- FFFF eh 1 quando todos os bits do barramento de enderecos for 1 (usado no expansor de slots)
-	ffff    <= AND_REDUCE(addr_bus);
+	-- Enable portas I/O
+	io_cs			<= not iorq_n_i and m1_n_i;
+
+	-- Slot expander address select
+	ffff    <= '1' when addr_bus_i = X"FFFF" else '0';
 
 	-- Slot Selects
-	sltsl_c		<= sltsl_n      when dis_mapper = '1' else '1';
-	sltsl_rom	<= slt_exp_n(1) when dis_mapper = '1' else sltsl_n;
-	sltsl_ram	<= slt_exp_n(3) when dis_mapper = '1' else '1';
+	sltsl_c			<= sltsl_n_i    when dis_mapper_i = '1' else '1';
+	sltsl_rom_n_s	<= slt_exp_n(0) when dis_mapper_i = '1' else sltsl_n_i;
+	sltsl_ram_n_s	<= slt_exp_n(1) when dis_mapper_i = '1' else '1';
 
-	-- Enable portas I/O
-	io_cs			<= not iorq_n and m1_n;
+	iomapper_s	<= '1' when io_cs = '1' and addr_bus_i(7 downto 2) = "111111"				else '0';	-- Acesso I/O portas $FC a $FF
+	iomegaram_s	<= '1' when io_cs = '1' and addr_bus_i(7 downto 1) = "1000111"				else '0';	-- Acesso I/O portas $8E a $8F
 
-	fw_en			<= '1' when io_cs = '1' and addr_bus(7 downto 0) = X"5F" and wr_n = '0'	else '0';	-- Acesso I/O escrita porta $5F
-	iomapper		<= '1' when io_cs = '1' and addr_bus(7 downto 2) = "111111"					else '0';	-- Acesso I/O portas $FC a $FF
-	iomegaram	<= '1' when io_cs = '1' and addr_bus(7 downto 1) = "1000111"				else '0';	-- Acesso I/O portas $8E a $8F
+	-- Flags
+	-- b0 : 1=SD Card on slot-0 changed since last read
+	-- b1 : 1=SD Card on slot-1 changed since last read
+	-- b2 : 0=SD card present on slot-0
+	-- b3 : 0=SD card present on slot-1
+	-- b4 : 0=Write protecton enabled for SD card slot-0
+	-- b5 : 0=Write protecton enabled for SD card slot-1
+	-- b6 : SW0 status. 0=RAM disabled, 1=RAM enabled
+	-- b7 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+	flags_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
 
-	-- Escrita porta $B7
-	process (reset_n, fw_en)
+	-- Disk change FFs
+	process (reset_n_i, sd_addr_s, sd_pres_n_i(0))
 	begin
-		if reset_n = '0' then
-			rom_wr_en <= '0';
-			rom_adhi  <= (others => '0');
-		elsif falling_edge(fw_en) then
-			rom_wr_en	<= data_bus(7);
-			rom_adhi		<= data_bus(2 downto 0);
+		if reset_n_i = '0' or sd_addr_s = '1' then
+			sd_chg_q(0) <= '0';
+		elsif falling_edge(sd_pres_n_i(0)) then
+			sd_chg_q(0) <= '1';
 		end if;
 	end process;
 
-	-- Controle da MEGAROM ASCII16 do Nextor
-	-- Gravacao no endereco $6000 chaveia o banco somente se nao estiver no modo gravacao da flash
-	rom_chav <= '1'	when wr_n = '0' and sltsl_rom = '0' and addr_bus = X"6000" and rom_wr_en = '0'	else '0';
-	-- Gravacao no endereco $6001 chaveia entre ROM e SPI
-	sd_chav	<= '1'	when wr_n = '0' and sltsl_rom = '0' and addr_bus = X"6001" and rom_wr_en = '0'	else '0';
-
-	process (reset_n, rom_chav)
+	process (reset_n_i, sd_addr_s, sd_pres_n_i(1))
 	begin
-		if reset_n = '0' then 
-			mr_addr <= (OTHERS => '0');
-		elsif falling_edge(rom_chav) then
-			mr_addr <= data_bus(2 downto 0);
+		if reset_n_i = '0' or sd_addr_s = '1' then
+			sd_chg_q(1) <= '0';
+		elsif falling_edge(sd_pres_n_i(1)) then
+			sd_chg_q(1) <= '1';
 		end if;
 	end process;
 
-	-- ROM acessada para leitura na pagina 1 ou pagina 2 ou gravacao em qualquer pagina
-	rom_rd1	<= '1'	when sltsl_rom = '0' and rd_n = '0' and addr_bus(15 downto 14) = "01"	else '0';
-	rom_rd2	<= '1'	when sltsl_rom = '0' and rd_n = '0' and addr_bus(15 downto 14) = "10"	else '0';
-	rom_wr	<= '1'	when sltsl_rom = '0' and wr_n = '0' and rom_wr_en = '1'						else '0';
-	rom_rd	<= rom_rd1 or rom_rd2;
+	-- Megarom ASCII16
+	-- 6000 = 011 00...
+	-- 6800 = 011 01...
+	-- 7000 = 011 10...
+	-- 7800 = 011 11...
 
-	-- Controle do endereco da ROM
-	rom_a <= rom_adhi			when rom_wr_en = '1'               and sltsl_rom = '0'	else	-- Gera endereco para gravacao da FLASH
-	         mr_addr			when addr_bus(15 downto 14) = "01" and sltsl_rom = '0'	else	-- Gera endereco do Nextor somente na pagina 1 (4000-7FFF)
-	         (others => '-');
+	rom_bank_wr_s	<= '1' when sltsl_n_i = '0' and wr_n_i = '0' and addr_bus_i(15 downto 13) = "011"	else '0';	-- 6000-7FFF
 
-	-- Controle do /CE da ROM
-	rom_cs <= '0' when rom_wr = '1' and sd_en = '0'		else	-- Gravacao da Flash (se SPI estiver desligado)
-	          '0' when rom_rd = '1' and sd_en = '0'		else	-- Leitura da Flash (se SPI estiver desligado)
-	          '0' when rom_rd = '1' and sd_pcs = '0'	else	-- Leitura da Flash (se SPI estiver ligado e nao for enderecado)
-	          '1';
-
-	-- Controle do /WR da ROM
-	rom_we <= '0' when rom_wr = '1' and sd_en = '0' 	else	-- Ativa sinal de gravacao quando habilitado e SPI desativado
-	          '1';
-
-	-- Controle do cheveamento da porta SPI
-	process (reset_n, sd_chav)
+	-- Bank write
+	process (reset_n_i, rom_bank_wr_s)
 	begin
-		if reset_n = '0' then 
-			sd_en		<= '0';
-		elsif falling_edge(sd_chav) then
-			sd_en		<= data_bus(0);
+		if reset_n_i = '0' then
+			rom_bank1_q		<= "000";
+			rom_bank2_q		<= "001";
+		elsif falling_edge(rom_bank_wr_s) then
+			case addr_bus_i(12 downto 11) is
+				when "00"   =>
+					rom_bank1_q		<= data_bus_io(2 downto 0);
+				when "10"   =>
+					rom_bank2_q		<= data_bus_io(2 downto 0);
+				when others =>
+					null;
+			end case;
 		end if;
 	end process;
 
-	sd_pcs	<= '1'  when sd_en = '1' and sltsl_rom = '0' and rom_wr_en = '0' and
-	                      (addr_bus(15 downto 11) = "01000" or addr_bus = X"4800")  else
+	-- Flash control
+	rom_a_o <= 
+		rom_bank1_q 	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0'	else
+		rom_bank2_q		when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'	else
+		(others => '-');
+
+	-- Flash /CS control
+	rom_ce_n_o <=
+		-- Excludes SPI range
+		'0'	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0' and rd_n_i = '0'	and sd_cs_s = '0'	else
+		'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'												else
+		'1';
+
+	-- Flash /WE control
+	rom_we_n_o	<=	'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0' and wr_n_i = '0'	else
+						'1';
+
+	-- 7B00 = 0111 1011
+	-- 7C00 = 0111 1100
+	-- 7D00 = 0111 1101
+	-- 7E00 = 0111 1110
+	-- 7F00 = 0111 1111
+
+	sd_cs_s	<= '1'  when sltsl_rom_n_s = '0' and addr_bus_i >= X"7B00" and addr_bus_i <= X"7F00"   else
 	            '0';
-	sd_addr	<= not addr_bus(11);	-- diferencia $4000-47FF de $4800
 
-	divclk: if dividirclock generate
-		process (reset_n, clock)
-		begin
-			if reset_n = '0' then
-				clock_sd <= '0';
-			elsif rising_edge(clock) then
-				clock_sd <= not clock_sd;
-			end if;
-		end process;
-	end generate;
-	ndivclk: if not dividirclock generate
-		clock_sd	<= clock;
-	end generate;
+	sd_addr_s	<= '1' when addr_bus_i(10 downto 8) = "111" and sd_cs_s = '1'	else
+						'0';
+
+	-- Bus
+	data_bus_io	<= 
+						(others => 'Z');
 
 end Behavioral;

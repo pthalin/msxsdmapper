@@ -24,11 +24,10 @@
 
 
 ; *** CONSTANTS ***
-IOFW		= $5F						; Porta de controle para gravacao da flash
 ALG_BYTE	= 1
 ALG_PAGE	= 2
 
-inicio:
+begin:
 
 ; **** MAIN PROGRAM ****
 
@@ -48,13 +47,13 @@ init:
 
 	ld		a, (options)
 	bit		1, a						; only list chips?
-	jp		nz, showList				; yes, jump
+	jp nz,	showList					; yes, jump
 
 	call	checkFlash     				; Search FLASH ROM
 
 	ld		a, (options)
 	bit		0, a						; only erasing flash?
-	jp		nz, eraseFlash				; yes, jump to erase it
+	jp nz,	eraseFlash					; yes, jump to erase it
 
 	call	checkFile					; Checks if file-argument exists and your size
 	call	eraseFlash					; Erase flash.
@@ -78,17 +77,23 @@ checkFlash:
 	di
 	call	sigslot						; Calls the next slot (first one if first time)
 	cp		$FF							; Is it the last slot?
-	jr		z, .naoachado				; Yes. FLASH was not found
-	ld		h, $80						; It is not the last slot. Placed it in page 2
+	jr z,	.naoachado					; Yes. FLASH was not found
+
+	push	af
+	ld		h, $40						; It is not the last slot. Placed it in page 1
 	call	ENASLT
+	pop		af
+	ld		h, $80						; Placed it in page 2 too
+	call	ENASLT
+
 	call	checkDeviceID				; Searching flash by executing its ID_CHECK command
-	jr		c, .loop					; Not found in this slot, continue with next one
+	jr c,	.loop						; Not found in this slot, continue with next one
 
 	ld		a, (thisslt)				; FLASH WAS FOUND
 	ld		(flashslt), a				; Slot saved
 	push	af 							; For printing the message of slot / subslot
 	and		3
-	add		a, '0'      				; ASCII conversion of the Slot
+	add		a, '0'						; ASCII conversion of the Slot
 	ld		(strAchado.slot), a
 	pop		af
 	rrca
@@ -97,6 +102,9 @@ checkFlash:
 	add		a, '0'
 	ld		(strAchado.subslot), a		; ASCII conversion of the Subslot.
 
+	ld		a, (RAMAD1)
+	ld		h, $40
+	call	ENASLT						; Restoring page 1 (Memory again)
 	ld		a, (RAMAD2)
 	ld		h, $80
 	call	ENASLT						; Restoring page 2 (Memory again)
@@ -111,6 +119,9 @@ checkFlash:
 	jp		print
 
 .naoachado:								; FLASH NOT FOUND
+	ld		a, (RAMAD1)
+	ld		h, $40
+	call	ENASLT						; Memory placed
 	ld		a, (RAMAD2)
 	ld		h, $80
 	call	ENASLT						; Memory placed
@@ -125,27 +136,25 @@ checkFlash:
 ; -------------------------
 checkDeviceID:
 	di
-	ld		a, $F0						; Comando $F0 (Reset)
-	call	flashSendCommand2
-	ld		a, $90						; Comando $90 (Software ID Entry)
-	call	flashSendCommand2
-	ld		a, ($8000)					; Ler Manufacturer ID
-	ld		(flashIdMan), a				; e salvar
-	ld		a, ($8001)					; Ler Product ID
-	ld		(flashIdProd), a			; e salvar
-	call	flashIdent					; chamamos funcao que identifica flash
+	ld		a, $F0						; Reset
+	call	flashSendCommand
+	ld		a, $90						; Software ID Entry
+	call	flashSendCommand
+	ld		a, ($8000)					; Read Manufacturer ID
+	ld		(flashIdMan), a
+	ld		a, ($8001)					; Read Product ID
+	ld		(flashIdProd), a
+	call	flashIdent					; Try to identify flash
 	ld		a, (flashAlg)
 	cp		0
-	scf									; Carry = 1 - erro
-	jr		z, .sair					; se A for zero nao identificamos
+	scf									; Carry = 1 - error
+	jr z,	.sair
 .ok:
 	xor		a							; Carry = 0 - OK
 .sair:
 	push	af
-	ld		a, $F0						; Comando $F0 (Reset)
-	call	flashSendCommand2
-	xor		a
-	out		(IOFW), a					; Desliga modo gravacao da Flash
+	ld		a, $F0						; Reset
+	call	flashSendCommand
 	pop		af
 	ei
 	ret
@@ -194,20 +203,20 @@ checkParams:
 	ld		a, (hl)
 	or		a							; Parameters?
 	ld		de, strHelp
-	jp		z, printErro				; no parameters. Show Help and exit
+	jp z,	printErro					; no parameters. Show Help and exit
 
 	call	checkOptions				; Check parameter options
 	call	checkFileName				; Check file name
 
 	ld		a, (dos)
 	cp		2
-	jp		nc, fillName				; If DOS2 then fill only the name
+	jp nc,	fillName					; If DOS2 then fill only the name
 	ld		hl, fileNameDOS2			; DOS1. Extract filename
 	ld		de, fileNameDOS1
 .loop0:
 	ld		a,(hl)
 	cp		'.'
-	jr		z, .loop2
+	jr z,	.loop2
 	ld		(de), a
 	inc		de
 .loop1:
@@ -229,7 +238,7 @@ checkFileName:
 	ld		a, (CMD_LENGTH)
 	cp		1
 	ld		b, a
-	jr		z, .p1
+	jr z,	.p1
 	dec		b
 .p1:
 	ld		hl, CMD_LINE
@@ -238,13 +247,13 @@ checkFileName:
 .loop0:
 	ld		a, (hl)
 	or		a
-	jr		z, .p2
+	jr z,	.p2
 	cp		'/'
-	jp		z, .p3
+	jp z,	.p3
 	cp		' '
-	jp		z, .p2
+	jp z,	.p2
 	cp		13
-	jr		z, .p2
+	jr z,	.p2
 	ld		(de),a
 	inc		de
 	inc		c
@@ -290,16 +299,16 @@ checkOptions:
 	or		000100000b
 	ld		de, strHelp
 	cp		'?'
-	jp		z, printErro
+	jp z,	printErro
 	cp		'h'
-	jp		z, printErro
+	jp z,	printErro
 
 	ld		c, 1
 	cp		'e'
-	jr		z, .achado
+	jr z,	.achado
 	sla		c
 	cp		'l'
-	jr		z, .achado
+	jr z,	.achado
 	ret
 .achado:
 	ld		a, (options)
@@ -316,7 +325,7 @@ checkFile:
 	call	print						; Open text
 	ld		a, (dos)
 	cp		2
-	jp		nc, .dos2					; DOS2 mode
+	jp nc,	.dos2						; DOS2 mode
 
 	call	makeFCB						; DOS1. Make FCB and Open command.
 	ld		hl, fileNameDOS1
@@ -331,7 +340,7 @@ checkFile:
 	ld		c, _OPEN					; Open file DOS2
 	call	callBdos
 	ld		de, strErroAbrirArq
-	jp		nz, printErro				; if Z = 0 then file not found. Error and Exit
+	jp nz,	printErro					; if Z = 0 then file not found. Error and Exit
 	ld		a, b
 	ld		(fileHandle), a				; Save FILE HANDLE
 	push	bc							; For check size in DOS 2, use SEEK Command.
@@ -352,13 +361,13 @@ checkFile:
 	ld		de, strTamanhoErrado		; Test filesize. 128K = 00 00 02
 	ld		a, (sizefile)
 	or		a
-	jp		nz, printErro
+	jp nz,	printErro
 	ld		a, (sizefile+1)
 	or		a
-	jp		nz, printErro
+	jp nz,	printErro
 	ld		a, (sizefile+2)
 	cp		2
-	jp		nz, printErro
+	jp nz,	printErro
 	ret
 
 ; *** PROGRAM ROUTINES ***
@@ -371,7 +380,7 @@ checkFile:
 loadFile:
 	ld		de, strGravando
 	call	print						; Show Write Text
-	ld		b, 8						; 8 blocos de 16K = 128K
+	ld		b, 8						; 8 blocks of 16K = 128K
 .loop:
 	push	bc
 	call	fillPage					; fill page 2 (read buffer) with $FF
@@ -381,7 +390,7 @@ loadFile:
 	call	writeFlash					; now write this 16 K to FLASH
 	ei
 	ld		de, strErroAoGravarFlash
-	jp		nz, printErro				; oops! Error writing bytes. Show Error and exit.
+	jp nz,	printErro					; oops! Error writing bytes. Show Error and exit.
 
 	ld		de, strPonto
 	call	print						; show '*' for 16 K page loaded
@@ -400,23 +409,19 @@ loadFile:
 
 ; ------------------
 ; LOAD16K
-; Load 16K
-; to page 2
+; Load 16K to frame 1
 ; from file open
 ; ------------------
 load16K:
 	; this code load 16 KB from file
-	; to buffer (page 2 $8000 - $BFFF)
+	; to buffer (frame 1: $4000 - $7FFF)
 
-	ld		a, (RAMAD2)
-	ld		h, $80
-	call	ENASLT						; mem in page 2
 	ei
-	ld		de, $8000					; buffer = $8000
+	ld		de, $4000					; buffer pointer = $4000
 	ld		hl, $4000					; length = $4000 (16K)
 	ld		a, (dos)
 	cp		2
-	jr		nc, .dos2					; if DOS 2 make <> load
+	jr nc,	.dos2						; if DOS 2 make <> load
 	push	hl							; DOS 1 LOAD.
 	call	setDTA						; set DTA
 	pop		hl
@@ -430,11 +435,11 @@ load16K:
 
 ; --------------------
 ; FILL PAGE
-; Fill page 2 with FFH
+; Fill page 1 with FFH
 ; ---------------------
 fillPage:
-	ld		hl, $8000
-	ld		de, $8001
+	ld		hl, $4000
+	ld		de, $4001
 	ld		bc, $3FFF
 	ld		(hl), $FF
 	ldir								; fill
@@ -451,11 +456,11 @@ fillName:
 .loop:
 	ld		a,(hl)
 	or		a
-	jr		z, .p1						; 0 dec
-	cp		':'                     	; end
-	jr		z, .p2
+	jr z,	.p1							; 0 dec
+	cp		':'							; end
+	jr z,	.p2
 	cp		'\\'						; params
-	jr		z, .p2
+	jr z,	.p2
 .p1:
 	dec		hl
 	djnz	.loop
@@ -465,7 +470,7 @@ fillName:
 .loop2:
 	ld		a, (hl)
 	or		a
-	ret	z
+	ret z
 	ld		(de),a
 	inc		hl
 	inc		de
@@ -510,7 +515,7 @@ delay:
 sigslot:
 	ld		a, (thisslt)				; Returns the next slot, starting by
 	cp		$FF							; slot 0. Returns #FF when there are not more slots
-	jr		nz, .p1						; Modifies AF, BC, HL.
+	jr nz,	.p1							; Modifies AF, BC, HL.
 	ld		a, (EXPTBL)
 	and		%10000000
 	ld		(thisslt), a
@@ -518,11 +523,11 @@ sigslot:
 .p1:
 	ld		a, (thisslt)
 	cp		%10001111
-	jr		z, .nomaslt
+	jr z,	.nomaslt
 	cp		%00000011
-	jr		z, .nomaslt
+	jr z,	.nomaslt
 	bit		7, a
-	jr		nz, .sltexp
+	jr nz,	.sltexp
 .p2:
 	and		%00000011
 	inc		a
@@ -540,7 +545,7 @@ sigslot:
 	and		%00001100
 	cp		%00001100
 	ld		a, c
-	jr		z, .p2
+	jr z,	.p2
 	add		a, %00000100
 	ld		(thisslt), a
 	ret
@@ -551,55 +556,29 @@ sigslot:
 ; *** FLASH ROUTINES ***
 
 ; ----------------------
-; flashSendCommand1
-; send command in A to 
-; flash mapped in page 1
-; Preserve flags
-; ----------------------
-flashSendCommand1:
-	push	hl
-	push	af
-	ld		a, $81
-	out		(IOFW), a					; Ativa modo de gravacao e seleciona pagina 1 da flash
-	ld		hl, $5555					; Escreve no endereco absoluto da flash $5555
-	ld		(hl), $AA
-	ld		a, $80
-	out		(IOFW), a					; Mantem modo de gravacao e seleciona pagina 0 da flash
-	ld		hl, $6AAA					; Escreve no endereco absoluto da flash $2AAA
-	ld		(hl), $55
-	ld		a, $81
-	out		(IOFW), a					; Mantem modo de gravacao e seleciona pagina 1 da flash
-	ld		hl, $5555					; Escreve no endereco absoluto da flash $5555
-	pop		af
-	ld		(hl), a						; Envia comando
-	pop		hl
-	ret
-
-; ----------------------
-; flashSendCommand2
+; flashSendCommand
 ; send command in A to 
 ; flash mapped in page 2
 ; Preserve flags
 ; ----------------------
-flashSendCommand2:
+flashSendCommand:
 	push	hl
 	push	af
-	ld		a, $81
-	out		(IOFW), a					; Ativa modo de gravacao e seleciona pagina 1 da flash
-	ld		hl, $9555					; Escreve no endereco absoluto da flash $5555
+	ld		a, $01
+	ld		($7000), a					; Selects bank 1
+	ld		hl, $9555					; Write $AA to flash absolute address $5555
 	ld		(hl), $AA
-	ld		a, $80
-	out		(IOFW), a					; Mantem modo de gravacao e seleciona pagina 0 da flash
-	ld		hl, $AAAA					; Escreve no endereco absoluto da flash $2AAA
+	ld		a, $00
+	ld		($7000), a					; Selects bank 0
+	ld		hl, $AAAA					; Write $55 to flash absolute address $2AAA
 	ld		(hl), $55
-	ld		a, $81
-	out		(IOFW), a					; Mantem modo de gravacao e seleciona pagina 1 da flash
-	ld		hl, $9555					; Escreve no endereco absoluto da flash $5555
+	ld		a, $01
+	ld		($7000), a					; Selects bank 1
+	ld		hl, $9555					; Write command to flash absolute address $5555
 	pop		af
-	ld		(hl), a						; Envia comando
+	ld		(hl), a
 	pop		hl
 	ret
-
 
 ; ----------------------
 ; WRITEFLASH
@@ -609,37 +588,38 @@ flashSendCommand2:
 ; NZ = Error
 ; ----------------------
 writeFlash:
-	ld		a, (RAMAD2)
+	ld		a, (flashslt)
 	ld		h, $80
-	call	ENASLT						; mem to page 2 (DOS1)
-
+	call	ENASLT						; flash to page 2
 	ld		a, (flashslt)
 	ld		h, $40
 	call	ENASLT						; flash to page 1
+	ld		a, (actualpage)
 
-	ld		hl, $8000					; buffer pointer
-	ld		de, $4000					; flash pointer
-	ld		b, d
-	ld		c, e
+	ld		($7000), a					; select 16K bank in frame 2
+	ld		a, (RAMAD1)
+	ld		h, $40
+	call	ENASLT						; mem to page 1
+	ld		hl, $4000					; buffer pointer
+	ld		de, $8000					; flash pointer
+	ld		bc, $4000					; 16K
 	di
 .loop:
 	ld		a, $A0						; Modo de gravacao de dados
-	call	flashSendCommand1
-	ld		a, (actualpage)
-	or		$80
-	out		(IOFW), a					; select 16K page in Flash
+	call	flashSendCommand
 	call	.gravaByte					; program byte
-	jr		nz, .erro					; ERROR. Z = 0
+	jr nz,	.erro						; ERROR. Z = 0
 	inc		hl							; Ok. Next byte.
 	inc		de
 	dec		bc
 	ld		a, b
 	or		c
-	jp		nz, .loop					; All 16 KB programmed? Return for making next block.
+	jp nz,	.loop						; All 16 KB programmed? Return for making next block.
 .erro:
 	push	af
-	xor		a
-	out		(IOFW), a					; Desliga modo gravacao da Flash
+	ld		a, (flashslt)
+	ld		h, $40
+	call	ENASLT						; flash to page 1
 	ld		a, (RAMAD1)
 	ld		h, $40
 	call	ENASLT						; Mem to PAGE 1 (DOS 1 Compatibility)
@@ -661,10 +641,10 @@ writeFlash:
 	dec		c
 	ld		a, (de)
 	xor		(hl)
-	jr		z, .fim						; ok programmed
+	jr z,	.fim						; ok programmed
 	ld		a, c
 	or		a
-	jr		nz, .loop3
+	jr nz,	.loop3
 	inc		a							; oops! Error
 .fim:
 	pop		bc
@@ -683,35 +663,32 @@ eraseFlash:
 	ld		a, (flashslt)
 	ld		h, $40
 	call	ENASLT						; set flash in page 1
+	ld		a, (flashslt)
+	ld		h, $80
+	call	ENASLT						; and page 2
 	di
-;	xor		a
-;	ld		(erasedelay), a				; delay de 256 ciclos
-	ld		a, $80						; Apaga chip
-	call	flashSendCommand1
+	ld		a, $80						; Erase all command
+	call	flashSendCommand
 	ld		a, $10
-	call	flashSendCommand1
-	ld		hl, $4000
+	call	flashSendCommand
+	ld		hl, $8000
 	ld		a, (hl)
 	ld		(togglebit), a
-.loop:									; testa fim do erase por Toggle Bit
+.loop:									; test finish by Toggle Bit
 	ld		a, (togglebit)
 	cp		(hl)
 	ld		a, (hl)
 	ld		(togglebit), a
-	jr		nz, .loop
-;	xor		a
-;	out		(IOFW), a					; Desliga modo gravacao da Flash
-;	call	delay						; make programmed delay.
-;	call	delay						; make programmed delay.
-;	di
+	jr nz,	.loop
 	ld		a, $F0						; end command. Reset Command.
-	call	flashSendCommand1
-	xor		a
-	out		(IOFW), a					; Desliga modo gravacao da Flash
+	call	flashSendCommand
 	ei
 	ld		a, (RAMAD1)
 	ld		h, $40
 	call	ENASLT						; set mem to page 1
+	ld		a, (RAMAD2)
+	ld		h, $80
+	call	ENASLT						; set mem to page 2
 	ld		de, strOk
 	call	print
 	ld		a, (options)
@@ -759,7 +736,7 @@ cmpHLcomDE:
 callBdosCE:
 	call	BDOS
 	or		a
-	jp		nz, error
+	jp nz,	error
 	ret
 
 ; -----------------
@@ -796,7 +773,7 @@ exitok:
 	call	ENASLT						; set mem to page 2
 	ld		a, (system)
 	cp		3							; Turbo R?
-	jr		c, exit						; No. Go To Exit
+	jr c,	exit						; No. Go To Exit
 	ld		a, (savecpu)				; Yes. Restore CPU Mode
 	call	systemSetCPU
 
@@ -851,7 +828,7 @@ open:
 	ld		c, _FOPEN
 	call	callBdos
 	ld		de, strErroAbrirArq
-	jp		nz, printErro
+	jp nz,	printErro
 	ld		ix, FCB
 	ld		a, 1
 	ld		(ix+14), a
@@ -900,7 +877,7 @@ readFile:
 closeFile:
 	ld		a, (dos)
 	cp		2
-	jr		nc, .dos2
+	jr nc,	.dos2
 	ld		de, FCB
 	ld		c, _FCLOSE
 	jp		callBdos
@@ -937,7 +914,7 @@ readMax:
 	push	hl
 	ld		de, (sizefiletmp)
 	call	cmpHLcomDE
-	jr		nc, .readmax0
+	jr nc,	.readmax0
 	pop		hl
 .readmaxend:
 	pop		de
@@ -948,7 +925,7 @@ readMax:
 	ld		hl, 0
 	call	cmpHLcomDE
 	pop		hl
-	jr		nz, .readmaxend
+	jr nz,	.readmaxend
 .readmax1:
 	ld		hl, (sizefiletmp)
 	jr		.readmaxend
@@ -961,26 +938,26 @@ readMax:
 showList:
 	ld		de, strListaCab
 	call	print
-	ld		hl, tblFlash				; HL aponta para inicio da tabela
+	ld		hl, tblFlash				; HL points to table start
 .loop:
 	ld		a, (hl)
-	cp		0							; acabou a tabela?
-	jp		z, exit
-	ld		(flashIdMan), a				; salva ID do fabricante
+	cp		0							; no more entries?
+	jp z,	exit
+	ld		(flashIdMan), a				; save manufacturer ID
 	inc		hl
-	ld		a, (hl)						; pega ID do produto
-	ld		(flashIdProd), a			; e salva
+	ld		a, (hl)						; get product ID
+	ld		(flashIdProd), a			; save it
 	inc		hl
-	ld		de, (hl)					; vamos pegar a string do fabricante
-	ld		(flashManPoint), de			; e salvar
-	inc		hl
-	inc		hl
-	ld		de, (hl)					; vamos pegar a string do produto
-	ld		(flashProdPoint), de		; e salvar
+	ld		de, (hl)					; Get string pointer of manufacturer
+	ld		(flashManPoint), de			; save it
 	inc		hl
 	inc		hl
-	ld		a, (hl)						; vamos pegar o algoritmo
-	ld		(flashAlg), a				; e salvar
+	ld		de, (hl)					; Get string pointer of product
+	ld		(flashProdPoint), de		; save it
+	inc		hl
+	inc		hl
+	ld		a, (hl)						; Get algorythm
+	ld		(flashAlg), a
 	inc		hl
 	push	hl
 	ld		de, (flashManPoint)
@@ -1001,39 +978,39 @@ flashIdent:
 	push	hl
 	push	bc
 	push	de
-	ld		hl, tblFlash				; HL aponta para inicio da tabela
+	ld		hl, tblFlash				; HL points to table start
 	ld		a, (flashIdMan)
-	ld		b, a						; B contem ID do fabricante
-	ld		d, 0						; DE eh usado para incrementar HL para proxima entrada da tabela
+	ld		b, a						; Manufacturer ID in B
+	ld		d, 0
 .loop:
 	ld		a, (hl)
-	cp		0							; acabou a tabela?
-	jr		z, .naoId					; entao nao identificamos
-	cp		b							; comparar ID do fabricante
-	jr		z, .idp						; bateu, vamos verificar o ID do produto
+	cp		0							; no more entries?
+	jr z,	.naoId						; nop, unsucessfull!
+	cp		b							; compares manufacturer ID
+	jr z,	.idp						; Ok, detects product ID
 	ld		e, 7
-	add		hl, de						; nao encontramos nessa entrada, vamos para a proxima
+	add		hl, de						; no matches, next entry
 	jr		.loop
 .idp:
-	inc		hl							; vamos comparar o ID do produto
+	inc		hl							; compares product ID
 	ld		a, (flashIdProd)
-	cp		(hl)						; ID do produto bate?
-	jr		z, .ok						; beleza, identificamos a flash
+	cp		(hl)						; equal?
+	jr z,	.ok							; Yes, sucessful
 	ld		e, 6
-	add		hl, de						; ID do produto nao bateu, vamos para a proxima entrada
+	add		hl, de						; no matches, next entry
 	jr		.loop
 .ok:
 	inc		hl
-	ld		de, (hl)					; vamos pegar a string do fabricante
-	ld		(flashManPoint), de			; e salvar
+	ld		de, (hl)
+	ld		(flashManPoint), de
 	inc		hl
 	inc		hl
-	ld		de, (hl)					; vamos pegar a string do produto
-	ld		(flashProdPoint), de		; e salvar
+	ld		de, (hl)
+	ld		(flashProdPoint), de
 	inc		hl
 	inc		hl
-	ld		a, (hl)						; vamos pegar o algoritmo
-	ld		(flashAlg), a				; e salvar
+	ld		a, (hl)
+	ld		(flashAlg), a
 .naoId:
 	pop		de
 	pop		bc
@@ -1045,7 +1022,7 @@ flashIdent:
 strTitulo:
 	.db		"SD Mapper flash programmer utility"
 	.db		13, 10
-	.db		"(c) 2014 by Fabio Belavenuto"
+	.db		"(c) 2014 by FBLabs"
 	; fall throw
 
 strCrLf:
