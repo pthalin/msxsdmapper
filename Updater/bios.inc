@@ -69,6 +69,7 @@ SAVEND			= $F87D
 EXBRSA			= $FAF0
 HOKVLD			= $FB20
 YFB21			= $FB21					; diskdriver table
+DRVINV			= $FB22					; Installed Disk-ROM
 YFB29			= $FB29					; diskdriver interrupt table
 BOTTOM			= $FC48
 HIMEM			= $FC4A
