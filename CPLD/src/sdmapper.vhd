@@ -225,8 +225,7 @@ begin
 	sd_cs_s	<= '1'  when sltsl_rom_n_s = '0' and rom_bank1_q = "111" and addr_bus_i >= X"7B00" and addr_bus_i <= X"7F00"   else
 	            '0';
 
-	sd_addr_s	<= '1' when addr_bus_i(10 downto 8) = "111" and sd_cs_s = '1'	else
-						'0';
+	sd_addr_s	<= '0' when addr_bus_i(10 downto 8) = "111"	else '1';
 
 	-- Bus
 	data_bus_io	<= 
