@@ -22,10 +22,12 @@
 
 	org		COM_START_ADDR
 
-
 ; *** CONSTANTS ***
 ALG_BYTE	= 1
 ALG_PAGE	= 2
+CHGBANK		= $7000
+BUFFER1		= $1000
+BUFFER2		= $C000
 
 begin:
 
@@ -321,7 +323,7 @@ checkOptions:
 ; CHECK IF FILE EXIST
 ; ---------------------
 checkFile:
-	ld		de, strAbrirArq
+	ld		de, strOpenFile
 	call	print						; Open text
 	ld		a, (dos)
 	cp		2
@@ -378,21 +380,20 @@ checkFile:
 ; Load ALL FILE into Flash ROM
 ; ----------------------------
 loadFile:
-	ld		de, strGravando
+	ld		de, strWriting
 	call	print						; Show Write Text
 	ld		b, 8						; 8 blocks of 16K = 128K
 .loop:
 	push	bc
-	call	fillPage					; fill page 2 (read buffer) with $FF
-	call	load16K						; and load one 16 K page to buffer
-	pop		bc
-	push	bc
+	call	fillBuffers					; fill buffers with $FF
+	call	load16K						; and load one 16 K page to buffers
+	di
 	call	writeFlash					; now write this 16 K to FLASH
 	ei
 	ld		de, strErroAoGravarFlash
 	jp nz,	printErro					; oops! Error writing bytes. Show Error and exit.
 
-	ld		de, strPonto
+	ld		de, strDot
 	call	print						; show '*' for 16 K page loaded
 	pop		bc
 	ld		a, (actualpage)
@@ -407,43 +408,64 @@ loadFile:
 	jp		print
 
 
+; --------------------
+; FILLBUFFERs
+; Fill buffers with $FF
+; ---------------------
+fillBuffers:
+	ld		hl, BUFFER1
+	ld		de, BUFFER1+1
+	ld		bc, $2FFF
+	ld		(hl), $FF
+	ldir								; fill
+	ld		hl, BUFFER2
+	ld		de, BUFFER2+1
+	ld		bc, $0FFF
+	ld		(hl), $FF
+	ldir								; fill
+	ret
+
 ; ------------------
 ; LOAD16K
-; Load 16K to frame 1
+; Load 16K to buffers
 ; from file open
 ; ------------------
 load16K:
 	; this code load 16 KB from file
-	; to buffer (frame 1: $4000 - $7FFF)
-
+	; to buffers
 	ei
-	ld		de, $4000					; buffer pointer = $4000
-	ld		hl, $4000					; length = $4000 (16K)
+	ld		de, BUFFER1					; buffer pointer
+	ld		hl, $3000					; length
 	ld		a, (dos)
 	cp		2
-	jr nc,	.dos2						; if DOS 2 make <> load
+	jr nc,	.dos2_1						; if DOS 2 make <> load
 	push	hl							; DOS 1 LOAD.
 	call	setDTA						; set DTA
 	pop		hl
-	call	readMax						; and read 16 KB or max if file < 16K or file size
+	call	readMax						; and read 8 KB or max if file < 8K or file size
+	call	readFile					; is not mult. of 16. And READ.
+	jr		.next
+.dos2_1:								; DOS 2 LOAD
+	ld		a, (fileHandle)
+	ld		b, a
+	ld		c, _READ					; DOS 2 COMMAND Read
+	call	callBdosCE
+.next:
+	ld		de, BUFFER2					; buffer pointer
+	ld		hl, $1000					; length
+	ld		a, (dos)
+	cp		2
+	jr nc,	.dos2_2						; if DOS 2 make <> load
+	push	hl							; DOS 1 LOAD.
+	call	setDTA						; set DTA
+	pop		hl
+	call	readMax						; and read 8 KB or max if file < 8K or file size
 	jp		readFile					; is not mult. of 16. And READ.
-.dos2:									; DOS 2 LOAD
+.dos2_2:								; DOS 2 LOAD
 	ld		a, (fileHandle)
 	ld		b, a
 	ld		c, _READ					; DOS 2 COMMAND Read
 	jp		callBdosCE
-
-; --------------------
-; FILL PAGE
-; Fill page 1 with FFH
-; ---------------------
-fillPage:
-	ld		hl, $4000
-	ld		de, $4001
-	ld		bc, $3FFF
-	ld		(hl), $FF
-	ldir								; fill
-	ret
 
 ; -----------------
 ; FILLNAME
@@ -466,7 +488,7 @@ fillName:
 	djnz	.loop
 .p2:
 	inc		hl
-	ld		de, strAbrirArq.nomearq		; loop for fill fileNameShow
+	ld		de, strOpenFile.filename		; loop for fill fileNameShow
 .loop2:
 	ld		a, (hl)
 	or		a
@@ -475,35 +497,6 @@ fillName:
 	inc		hl
 	inc		de
 	jr		.loop2
-
-; ----------------------
-; DELAY
-; Flash operation delay
-; ----------------------
-delay:
-	push	hl
-	push	de
-	push	bc							; this delay is for erasing operations
-	ld		a, (RAMAD1)
-	ld		h, $40
-	call	ENASLT						; set mem to page 1
-	ld		a, (erasedelay)				; loop times from delay.
-	ld		b, a
-.loop:
-	push	bc
-	ei
-	halt
-	di
-	pop		bc
-	djnz	.loop
-	ld		a, (flashslt)
-	ld		h, $40
-	call	ENASLT						; return flash to page 1 (DOS1 Compatibility)
-	ei
-	pop		bc
-	pop		de
-	pop		hl
-	ret
 
 ; -------------------------------------------------------
 ; SIGSLOT
@@ -565,15 +558,15 @@ flashSendCommand:
 	push	hl
 	push	af
 	ld		a, $01
-	ld		($7000), a					; Selects bank 1
+	ld		(CHGBANK), a				; Selects bank 1
 	ld		hl, $9555					; Write $AA to flash absolute address $5555
 	ld		(hl), $AA
 	ld		a, $00
-	ld		($7000), a					; Selects bank 0
+	ld		(CHGBANK), a				; Selects bank 0
 	ld		hl, $AAAA					; Write $55 to flash absolute address $2AAA
 	ld		(hl), $55
 	ld		a, $01
-	ld		($7000), a					; Selects bank 1
+	ld		(CHGBANK), a				; Selects bank 1
 	ld		hl, $9555					; Write command to flash absolute address $5555
 	pop		af
 	ld		(hl), a
@@ -583,51 +576,60 @@ flashSendCommand:
 ; ----------------------
 ; WRITEFLASH
 ; Write 16 KB into Flash
-; page 1 : Flash
-; page 2 : Buffer
 ; NZ = Error
 ; ----------------------
 writeFlash:
 	ld		a, (flashslt)
-	ld		h, $80
-	call	ENASLT						; flash to page 2
+	ld		h, $40
+	call	ENASLT						; flash to frame 1
 	ld		a, (flashslt)
-	ld		h, $40
-	call	ENASLT						; flash to page 1
-	ld		a, (actualpage)
-
-	ld		($7000), a					; select 16K bank in frame 2
-	ld		a, (RAMAD1)
-	ld		h, $40
-	call	ENASLT						; mem to page 1
-	ld		hl, $4000					; buffer pointer
+	ld		h, $80
+	call	ENASLT						; flash to frame 2
+	ld		hl, BUFFER1					; buffer pointer
 	ld		de, $8000					; flash pointer
-	ld		bc, $4000					; 16K
-	di
-.loop:
-	ld		a, $A0						; Modo de gravacao de dados
+	ld		bc, $3000					; 12K
+.loop1:
+	ld		a, $A0						; Flash Write Byte Command
 	call	flashSendCommand
-	call	.gravaByte					; program byte
-	jr nz,	.erro						; ERROR. Z = 0
+	ld		a, (actualpage)
+	ld		(CHGBANK), a				; select 16K bank in frame 2
+	call	writeByte					; program byte
+	jr nz,	.exit						; ERROR.
 	inc		hl							; Ok. Next byte.
 	inc		de
 	dec		bc
 	ld		a, b
 	or		c
-	jp nz,	.loop						; All 16 KB programmed? Return for making next block.
-.erro:
+	jp nz,	.loop1						; All programmed? Return for making next block.
+
+	ld		hl, BUFFER2					; buffer pointer
+	ld		bc, $1000					; 4K
+.loop2:
+	ld		a, $A0						; Flash Write Byte Command
+	call	flashSendCommand
+	ld		a, (actualpage)
+	ld		(CHGBANK), a				; select 16K bank in frame 2
+	call	writeByte					; program byte
+	jr nz,	.exit						; ERROR.
+	inc		hl							; Ok. Next byte.
+	inc		de
+	dec		bc
+	ld		a, b
+	or		c
+	jp nz,	.loop2						; All programmed? Return for making next block.
+.exit:
 	push	af
-	ld		a, (flashslt)
-	ld		h, $40
-	call	ENASLT						; flash to page 1
 	ld		a, (RAMAD1)
 	ld		h, $40
-	call	ENASLT						; Mem to PAGE 1 (DOS 1 Compatibility)
+	call	ENASLT						; Mem to PAGE 1
+	ld		a, (RAMAD2)
+	ld		h, $80
+	call	ENASLT						; Mem to PAGE 2
 	pop		af
 	ret
 
 ; program byte and check 30 times
-.gravaByte:
+writeByte:
 	push	hl
 	push	de
 	push	bc
@@ -658,7 +660,7 @@ writeFlash:
 ; or CHIP Erase Command
 ; -----------------------
 eraseFlash:
-	ld		de, strApagarFlash
+	ld		de, strEraseFlash
 	call	print						; Erase Text Show.
 	ld		a, (flashslt)
 	ld		h, $40
@@ -1080,29 +1082,29 @@ strTamanhoErrado:
 	.db		"ERROR: File size must be 128KB"
 	.db		13, 10, '$'
 
-strAbrirArq:
+strOpenFile:
 	.db		13, 10
 	.db		"Open file : "
-.nomearq:
+.filename:
 	.db		"                "
 	.db		13, 10, '$'
 
-strApagarFlash:
+strEraseFlash:
 	.db		13, 10
 	.db		"Erasing Flash "
 	.db		'$'
 
-strPonto:
+strDot:
 	.db		'*$'
 
-strGravando:
+strWriting:
 	.dw 	13, 10
-	.db		"Loading "
+	.db		"Writing: "
 	.db 	'$'
 
 strErroAoGravarFlash:
 	.db		13, 10
-	.db		"ERROR: Problems writing Flash ...", 13, 10
+	.db		"ERROR: Writing Flash ...", 13, 10
 	.db		'$'
 
 strUpdateCompleto:
@@ -1218,8 +1220,8 @@ flashIdProd:	.db 0					; Flash Product ID
 flashAlg		.db 0					; Flash algorithm
 flashManPoint:	.dw 0					; Flash manufacturer string pointer
 flashProdPoint:	.dw	0					; Flash product string pointer
-erasedelay:		.db	0					; tmp variable for loop times delay
-togglebit:		.db 0
+;flashHalf:		.db	0					; What flash half is writing
+togglebit:		.db 0					; tmp variable for Flash Toggle Bit test
 sizefiletmp:	.ds	4					; tmp variable for READMAX Code
 fileHandle:		.db	0					; DOS 2 File Handle
 fileNameDOS2:	.ds	64					; Tmp for fileName
