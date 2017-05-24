@@ -25,7 +25,7 @@ entity sdmapper is
 		mr_mp_i			: in    std_logic;								-- 1 = mapper
 		-- BUS interface
 		addr_bus_i		: in    std_logic_vector(15 downto 0);
-		data_bus_io		: inout std_logic_vector(7 downto 0);
+		data_bus_io		: inout std_logic_vector( 7 downto 0);
 		wr_n_i			: in    std_logic;
 		rd_n_i			: in    std_logic;
 		iorq_n_i			: in    std_logic;
@@ -41,12 +41,12 @@ entity sdmapper is
 		ram_cs_o			: out   std_logic;
 		ram_we_o			: out   std_logic;
 		-- SD card interface
-		sd_cs_n_o		: out   std_logic_vector(1 downto 0);
+		sd_cs_n_o		: out   std_logic_vector( 1 downto 0);
 		sd_sclk_o		: out   std_logic;
 		sd_mosi_o		: out   std_logic;
 		sd_miso_i		: in    std_logic;
-		sd_wp_n_i		: in    std_logic_vector(1 downto 0);	-- 0 = Write protected
-		sd_pres_n_i		: in    std_logic_vector(1 downto 0)	-- 0 = SD Card present
+		sd_wp_n_i		: in    std_logic_vector( 1 downto 0);		-- 0 = Write protected
+		sd_pres_n_i		: in    std_logic_vector( 1 downto 0)		-- 0 = SD Card present
 	);
 
 end sdmapper;
@@ -63,11 +63,13 @@ architecture Behavioral of sdmapper is
 	signal sltsl_ram_n_s	: std_logic;
 
 	-- SPI port
-	signal sd_cs_s			: std_logic;
-	signal sd_addr_s		: std_logic;
-	signal spi_ctrl_rd_s	: std_logic;
+	signal spi_cs_s		: std_logic;
 	signal sd_chg_q		: std_logic_vector(1 downto 0);
-	signal flags_s			: std_logic_vector(7 downto 0);
+	signal status_s		: std_logic_vector(7 downto 0);
+	signal spi_ctrl_wr_s	: std_logic;
+	signal spi_ctrl_rd_s	: std_logic;
+	signal spi_mode_wr_s	: std_logic;
+	signal spi_mode_q		: std_logic;
 
 	-- Flash ASCII16
 	signal rom_bank_wr_s	: std_logic;
@@ -81,19 +83,15 @@ begin
 	port map (
 		clock_i			=> clock_i,
 		reset_n_i		=> reset_n_i,
-		flags_i			=> flags_s,
 		-- CPU interface
-		cs_i				=> sd_cs_s,
-		addr_bus_i		=> sd_addr_s,
+		cs_i				=> spi_cs_s,
 		data_bus_io		=> data_bus_io,
 		wr_n_i			=> wr_n_i,
 		rd_n_i			=> rd_n_i,
-		ctrl_rd_o		=> spi_ctrl_rd_s,
 		-- SD card interface
-		sd_cs_n_o		=> sd_cs_n_o,
-		sd_sclk_o		=> sd_sclk_o,
-		sd_mosi_o		=> sd_mosi_o,
-		sd_miso_i		=> sd_miso_i
+		spi_sclk_o		=> sd_sclk_o,
+		spi_mosi_o		=> sd_mosi_o,
+		spi_miso_i		=> sd_miso_i
 	);
 
 	-- Expansor de slot
@@ -143,7 +141,7 @@ begin
 	iomapper_s	<= '1' when io_cs = '1' and addr_bus_i(7 downto 2) = "111111"				else '0';	-- Acesso I/O portas $FC a $FF
 	iomegaram_s	<= '1' when io_cs = '1' and addr_bus_i(7 downto 1) = "1000111"				else '0';	-- Acesso I/O portas $8E a $8F
 
-	-- Flags
+	-- Status flags
 	-- b0 : 1=SD Card on slot-0 changed since last read
 	-- b1 : 1=SD Card on slot-1 changed since last read
 	-- b2 : 0=SD card present on slot-0
@@ -153,7 +151,7 @@ begin
 	-- b6 : SW0 status. 0=RAM disabled, 1=RAM enabled
 	-- b7 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
 
---	flags_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
+--	status_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
 
 	-- Old fashion
 	--;	b0	: 0=SD card present on slot-0
@@ -165,26 +163,7 @@ begin
 	--;	b6	: Reserved for future use. Must be masked out from readings.
 	--;	b7	: 1=SPI transfer busy. 0=No ongoing SPI transfer
 
-	flags_s	<= "00" & mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i;
-
-	-- Disk change FFs
-	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(0))
-	begin
-		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
-			sd_chg_q(0) <= '0';
-		elsif falling_edge(sd_pres_n_i(0)) then
-			sd_chg_q(0) <= '1';
-		end if;
-	end process;
-
-	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(1))
-	begin
-		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
-			sd_chg_q(1) <= '0';
-		elsif falling_edge(sd_pres_n_i(1)) then
-			sd_chg_q(1) <= '1';
-		end if;
-	end process;
+	status_s	<= "00" & mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i;
 
 	-- Megarom ASCII16
 	-- 6000 = 011 00...
@@ -221,13 +200,58 @@ begin
 	-- Flash /CS control
 	rom_ce_n_o <=
 		-- Excludes SPI range
-		'0'	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0' and rd_n_i = '0'	and sd_cs_s = '0'	else
-		'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'												else
+		'0'	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0' and rd_n_i = '0'	and spi_cs_s = '0'	else
+		'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'													else
 		'1';
 
 	-- Flash /WE control
 	rom_we_n_o	<=	'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0' and wr_n_i = '0'	else
 						'1';
+
+	-- Disk change FFs
+	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(0))
+	begin
+		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
+			sd_chg_q(0) <= '0';
+		elsif falling_edge(sd_pres_n_i(0)) then
+			sd_chg_q(0) <= '1';
+		end if;
+	end process;
+
+	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(1))
+	begin
+		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
+			sd_chg_q(1) <= '0';
+		elsif falling_edge(sd_pres_n_i(1)) then
+			sd_chg_q(1) <= '1';
+		end if;
+	end process;
+
+	-- SPI
+	spi_ctrl_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F00"	else '0';
+	spi_ctrl_rd_s <= '1' when sltsl_rom_n_s = '0' and rd_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F00"	else '0';
+	spi_mode_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F01"	else '0';
+
+	-- SPI Control register write
+	process (reset_n_i, spi_ctrl_wr_s)
+	begin
+		if reset_n_i = '0' then
+			sd_cs_n_o	<= "11";
+		elsif falling_edge(spi_ctrl_wr_s) then
+			sd_cs_n_o	<= data_bus_io(1 downto 0);
+		end if;
+	end process;
+
+	-- SPI Mode register write
+	process (reset_n_i, spi_mode_wr_s)
+	begin
+		if reset_n_i = '0' then
+			spi_mode_q	<= '0';
+		elsif falling_edge(spi_mode_wr_s) then
+			spi_mode_q	<= data_bus_io(0);
+		end if;
+	end process;
+
 
 	-- 7B00 = 0111 1011
 	-- 7C00 = 0111 1100
@@ -235,13 +259,11 @@ begin
 	-- 7E00 = 0111 1110
 	-- 7F00 = 0111 1111
 
-	sd_cs_s	<= '1'  when sltsl_rom_n_s = '0' and rom_bank1_q = "111" and addr_bus_i >= X"7B00" and addr_bus_i <= X"7F00"   else
+	spi_cs_s	<= '1'  when spi_mode_q = '1' and sltsl_rom_n_s = '0' and rom_bank1_q = "111" and addr_bus_i >= X"7B00" and addr_bus_i <= X"7EFF"   else
 	            '0';
 
-	sd_addr_s	<= '0' when addr_bus_i(10 downto 8) = "111"	else '1';
-
 	-- Bus
-	data_bus_io	<= 
+	data_bus_io	<= status_s	when spi_ctrl_rd_s = '1'	else
 						(others => 'Z');
 
 end Behavioral;

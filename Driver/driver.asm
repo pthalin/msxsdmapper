@@ -26,6 +26,10 @@
 ;	b0	: SD card slot-0 chip-select (0=selected)
 ;	b1	: SD card slot-1 chip-select (0=selected)
 
+; 7F01h		: Mode configuration register (write only)
+;	b0	: 0=ROM mode, SPI interface disabled, 1=SPI interface enabled
+
+
 
 	output	"driver.bin"
 
@@ -57,8 +61,10 @@ VER_REV		equ	6
 ;-----------------------------------------------------------------------------
 ; Enderecos SPI
 
-PORTCFG		= $7F00
-PORTSPI		= $7B00
+SPIDATA		= $7B00
+SPICTRL		= $7F00
+SPISTATUS	= $7F00
+SPIMODE		= $7F01
 
 ; Comandos SPI:
 CMD0	= 0  | $40
@@ -436,7 +442,7 @@ SDHCDEVINIT:	; FBLabs SDHC Interface initialization
 	ld	a, ' '
 	call	CHPUT
 	ld	c, (iy+NUMSD)
-	ld	a, (PORTCFG)		; testar se cartao esta inserido
+	ld	a, (SPISTATUS)		; testar se cartao esta inserido
 	and	c			; C contem 1 se cartao 1, 2 se cartao 2
 	jr	z,.naoVazio
 	ld	de, strVazio		; nao tem cartao no slot
@@ -478,11 +484,11 @@ SDHCDEVINIT:	; FBLabs SDHC Interface initialization
 
 SDMAPPERINIT:		; This block is exclusive for the SD-Mapper
 	ld	de, strMr_mp_desativada
-	ld	a, (PORTCFG)		; testar se mapper/megaram esta ativa
+	ld	a, (SPISTATUS)		; testar se mapper/megaram esta ativa
 	and	$10
 	jr	z,.print		; desativada, pula
 	ld	de, strMapper
-	ld	a, (PORTCFG)		; ativa, testar se eh mapper ou megaram
+	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
 	and	$20
 	jp	nz,printString
 	ld	de, strMegaram		; Megaram ativa
@@ -626,7 +632,9 @@ leitura:
 	ld	d, a
 	pop	af		; HL = ponteiro destino
 	ld	e, a		; BC DE = 32 bits numero do bloco
+	call	enableSPI
 	call	LerBloco	; chamar rotina de leitura de dados
+	call	disableSPI
 	jr	nc,.ok
 	call	marcaErroCartao		; ocorreu erro na leitura, marcar erro
 ;	ld	a, ENRDY	; Not ready
@@ -660,7 +668,9 @@ escrita:
 	ld	d, a
 	pop	af		; HL = ponteiro destino
 	ld	e, a		; BC DE = 32 bits numero do bloco
+	call	enableSPI
 	call	GravarBloco	; chamar rotina de gravacao de dados
+	call	disableSPI
 	jr	nc,.ok2
 	call	marcaErroCartao		; ocorreu erro, marcar nas flags
 	ld	a,EWRERR	; Write error
@@ -850,13 +860,15 @@ DEV_STATUS:
 	pop	af
 	ld	(iy+NUMSD),a	; salva numero do device atual (1 ou 2)
 	ld	c,a		; c=device number
-	ld	a, (PORTCFG)	; testar se cartao esta inserido
+	ld	a, (SPISTATUS)	; testar se cartao esta inserido
 	and	c		; C contem 1 se cartao 1, 2 se cartao 2
 	jr	nz,.cartaoComErro	; se slot do cartao estiver vazio, marcamos o erro nas flags
 	ld	a, (iy+FLAGSCARTAO)	; testar bit de erro do cartao nas flags
 	and	c
 	jr	z,.semMudanca	; cartao nao marcado com erro, pula
+	call	enableSPI
 	call	detectaCartao	; erro na deteccao do cartao, tentar re-detectar
+	call	disableSPI
 	jr	c,.cartaoComErro	; nao conseguimos detectar, sai com erro
 	ld	a, (iy+NUMSD)		; conseguimos detectar, tira erro nas flags
 	cpl			; inverte bits para fazer o AND
@@ -978,6 +990,7 @@ pegaWorkArea:
 	ex	af,af'
 	xor	a
 	ld	ix, GWORK
+	call	disableSPI
 	call	CALBNK
 	ld	l,(ix)		; em HL tem o ponteiro da nossa area da RAM
 	ld	h,(ix+1)
@@ -998,7 +1011,7 @@ testaCartao:
 	pop	af
 	ld	(iy+NUMSD), a	; salva numero do device atual (1 ou 2)
 	ld	c, a
-	ld	a, (PORTCFG)	; testar se cartao esta inserido
+	ld	a, (SPISTATUS)	; testar se cartao esta inserido
 	and	c		; C contem 1 se cartao 1, 2 se cartao 2
 	jr	nz,.saicomerro				
 	ld	a, (iy+FLAGSCARTAO)	; testar bit de erro do cartao nas flags
@@ -1036,7 +1049,7 @@ testaWP:
 	ld	c, (iy+NUMSD)	; cartao atual (1 ou 2)
 	rlc	c		; desloca para apontar para bits 2 ou 3 para cartoes 1 ou 2 respectivamente
 	rlc	c
-	ld	a, (PORTCFG)	; testar se cartao esta protegido
+	ld	a, (SPISTATUS)	; testar se cartao esta protegido
 	and	c
 	ret			; se A for 0 cartao esta protegido
 
@@ -1290,7 +1303,7 @@ lerBlocoCxD:
 ;	or 	a		; Clear Cy
 	ld	a,20
 	db	#ED,#F9		; mulub a,a
-	ld	hl, PORTSPI
+	ld	hl, SPIDATA
 	jr	c,.r800		; Use LDIR for R800
 	.16	ldi	; 16 vezes o opcode LDI
 .end:	ld	a, (hl)
@@ -1314,7 +1327,7 @@ iniciaSD:
 	ld	b, 10		; enviar 80 pulsos de clock com cartao desabilitado
 enviaClocksInicio:
 	ld	a, $FF		; manter MOSI em 1
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	djnz	enviaClocksInicio
 	call	setaSDAtual	; ativar cartao atual
 	ld	b, 8		; 8 tentativas para CMD0
@@ -1336,7 +1349,7 @@ SD_SEND_CMD0:
 desabilitaSDs:
 	push	af
 	ld	a, $FF		; todos os /CS em 1
-	ld	(PORTCFG), a
+	ld	(SPICTRL), a
 	pop	af
 	ret
 
@@ -1422,16 +1435,16 @@ SD_SEND_CMD_2_ARGS_GET_R3:
 ; ------------------------------------------------
 SD_SEND_CMD:
 	call	setaSDAtual
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	push	af
 	ld	a, b
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	ld	a, c
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	ld	a, d
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	ld	a, e
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	pop	af
 	cp	CMD0
 	ld	b, $95		; CRC para CMD0
@@ -1442,7 +1455,7 @@ SD_SEND_CMD:
 	ld	b, $FF		; CRC dummy
 enviaCRC:
 	ld	a, b
-	ld	(PORTSPI), a
+	ld	(SPIDATA), a
 	jr	WAIT_RESP_NO_FF
 
 ; ------------------------------------------------
@@ -1469,7 +1482,7 @@ WAIT_RESP_FE:
 WAIT_RESP_NO_FF:
 	ld	bc, 1		; 256 tentativas
 .loop:
-	ld	a, (PORTSPI)
+	ld	a, (SPIDATA)
 	cp	$FF		; testa $FF
 	ret		nz		; sai se nao for $FF
 	djnz	.loop
@@ -1485,7 +1498,7 @@ WAIT_RESP_NO_FF:
 WAIT_RESP_NO_00:
 	ld	bc, 128		; 32768 tentativas
 .loop:
-	ld	a, (PORTSPI)
+	ld	a, (SPIDATA)
 	or	a
 	ret	nz			; se resposta for <> $00, sai
 	djnz	.loop
@@ -1500,10 +1513,10 @@ WAIT_RESP_NO_00:
 ; ------------------------------------------------
 setaSDAtual:
 	push	af
-	ld	a, (PORTSPI)	; dummy read
+	ld	a, (SPIDATA)	; dummy read
 	ld	a, (iy+NUMSD)
 	cpl			; inverte bits
-	ld	(PORTCFG), a
+	ld	(SPICTRL), a
 	pop	af
 	ret
 
@@ -1541,20 +1554,20 @@ GravarBloco:
 	jp	c,terminaLeituraEscritaBloco	; erro
 .loop:
 	ld	a, $FC		; mandar $FC para indicar que os proximos dados sao
-	ld	(PORTSPI),a	; dados para gravacao
+	ld	(SPIDATA),a	; dados para gravacao
 	; Check for a Z80 or R800
 	ex	de,hl
 ;	or 	a		; Clear Cy
 	ld	a,20
 	db	#ED,#F9		; mulub a,a
 	ex	de,hl
-	ld	de, PORTSPI
+	ld	de, SPIDATA
 	jp	c,.r800m	; Use LDIR for R800
 	.512	ldi		; 512 vezes o opcode LDI
 .part2m:
 	ld	a, $FF		; envia dummy CRC
-	ld	(PORTSPI),a
-	ld	(PORTSPI),a
+	ld	(SPIDATA),a
+	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
 	and	$1F		; testa bits erro
 	cp	5
@@ -1566,12 +1579,12 @@ GravarBloco:
 	dec	a
 	ld	(iy+NUMBLOCOS), a
 	jp	nz,.loop
-	ld	a, (PORTSPI)	; acabou os blocos, fazer 2 dummy reads
-	ld	a, (PORTSPI)
+	ld	a, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
+	ld	a, (SPIDATA)
 	ld	a, $FD		; enviar $FD para informar ao cartao que acabou os dados
-	ld	(PORTSPI),a
-	ld	a, (PORTSPI)	; dummy reads
-	ld	a, (PORTSPI)
+	ld	(SPIDATA),a
+	ld	a, (SPIDATA)	; dummy reads
+	ld	a, (SPIDATA)
 	call	WAIT_RESP_NO_00	; esperar cartao
 	jp	.fim		; CMD25 concluido, sair informando nenhum erro
 
@@ -1589,7 +1602,7 @@ GravarBloco:
 	jp	c,terminaLeituraEscritaBloco	; erro
 
 	ld	a, $FE		; mandar $FE para indicar que vamos mandar dados para gravacao
-	ld	(PORTSPI),a
+	ld	(SPIDATA),a
 
 	; Check for a Z80 or R800
 	ex	de,hl
@@ -1597,15 +1610,15 @@ GravarBloco:
 	ld	a,20
 	db	#ED,#F9		; mulub a,a
 	ex	de,hl
-	ld	de, PORTSPI
+	ld	de, SPIDATA
 	jr	c,.r800s	; Use LDIR for R800
 	.512	ldi
 .part2s:
 	ld	bc,512
 	ldir
 	ld	a, $FF		; envia dummy CRC
-	ld	(PORTSPI),a
-	ld	(PORTSPI),a
+	ld	(SPIDATA),a
+	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
 	and	$1F		; testa bits erro
 	cp	5
@@ -1654,13 +1667,13 @@ LerBloco:
 ;	or 	a		; Clear Cy
 	ld	a,20
 	db	#ED,#F9		; mulub a,a
-	ld	hl, PORTSPI
+	ld	hl, SPIDATA
 	jp	c,.r800m	; Use LDIR for R800
 	.512	ldi
 .part2m:
 	ex	de,hl
-	ld	a, (PORTSPI)	; descarta CRC
-	ld	a, (PORTSPI)
+	ld	a, (SPIDATA)	; descarta CRC
+	ld	a, (SPIDATA)
 	ld	a, (iy+NUMBLOCOS)	; testar se tem mais blocos para ler
 	dec	a
 	ld	(iy+NUMBLOCOS), a
@@ -1690,12 +1703,12 @@ LerBloco:
 ;	or 	a		; Clear Cy
 	ld	a,20
 	db	#ED,#F9		; mulub a,a
-	ld	hl, PORTSPI
+	ld	hl, SPIDATA
 	jr	c,.r800s	; Use LDIR for R800
 	.512	ldi
 .part2s:
 	ex	de,hl
-	ld	a, (PORTSPI)	; descarta CRC
+	ld	a, (SPIDATA)	; descarta CRC
 .fim:
 	xor	a		; zera carry para informar leitura sem erros
 	jp	terminaLeituraEscritaBloco
@@ -1718,6 +1731,26 @@ blocoParaByte:
 ; ------------------------------------------------
 ; Funcoes utilitarias
 ; ------------------------------------------------
+
+; ------------------------------------------------
+; Enable the SPI interface
+; ------------------------------------------------
+enableSPI:
+	push	af
+	ld	a, 1
+	ld	(SPIMODE), a
+	pop	af
+	ret
+
+; ------------------------------------------------
+; Disable the SPI interface
+; ------------------------------------------------
+disableSPI:
+	push	af
+	ld	a, 0
+	ld	(SPIMODE), a
+	pop	af
+	ret
 
 ; ------------------------------------------------
 ; Imprime string na tela apontada por DE
