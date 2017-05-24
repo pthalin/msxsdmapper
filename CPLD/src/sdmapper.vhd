@@ -68,7 +68,6 @@ architecture Behavioral of sdmapper is
 	signal status_s		: std_logic_vector(7 downto 0);
 	signal spi_ctrl_wr_s	: std_logic;
 	signal spi_ctrl_rd_s	: std_logic;
-	signal spi_mode_wr_s	: std_logic;
 	signal spi_mode_q		: std_logic;
 
 	-- Flash ASCII16
@@ -171,7 +170,8 @@ begin
 	-- 7000 = 011 10...
 	-- 7800 = 011 11...
 
-	rom_bank_wr_s	<= '1' when sltsl_n_i = '0' and wr_n_i = '0' and addr_bus_i(15 downto 13) = "011"	else '0';	-- 6000-7FFF
+	rom_bank_wr_s	<= '1' when sltsl_n_i = '0' and wr_n_i = '0' and (addr_bus_i = X"6000" or addr_bus_i = X"7000")	else
+							'0';
 
 	-- Bank write
 	process (reset_n_i, rom_bank_wr_s)
@@ -180,10 +180,10 @@ begin
 			rom_bank1_q		<= "000";
 			rom_bank2_q		<= "001";
 		elsif falling_edge(rom_bank_wr_s) then
-			case addr_bus_i(12 downto 11) is
-				when "00"   =>
+			case addr_bus_i(12) is
+				when '0'   =>
 					rom_bank1_q		<= data_bus_io(2 downto 0);
-				when "10"   =>
+				when '1'   =>
 					rom_bank2_q		<= data_bus_io(2 downto 0);
 				when others =>
 					null;
@@ -230,7 +230,6 @@ begin
 	-- SPI
 	spi_ctrl_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F00"	else '0';
 	spi_ctrl_rd_s <= '1' when sltsl_rom_n_s = '0' and rd_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F00"	else '0';
-	spi_mode_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F01"	else '0';
 
 	-- SPI Control register write
 	process (reset_n_i, spi_ctrl_wr_s)
@@ -242,24 +241,10 @@ begin
 		end if;
 	end process;
 
-	-- SPI Mode register write
-	process (reset_n_i, spi_mode_wr_s)
-	begin
-		if reset_n_i = '0' then
-			spi_mode_q	<= '0';
-		elsif falling_edge(spi_mode_wr_s) then
-			spi_mode_q	<= data_bus_io(0);
-		end if;
-	end process;
-
 
 	-- 7B00 = 0111 1011
-	-- 7C00 = 0111 1100
-	-- 7D00 = 0111 1101
-	-- 7E00 = 0111 1110
 	-- 7F00 = 0111 1111
-
-	spi_cs_s	<= '1'  when spi_mode_q = '1' and sltsl_rom_n_s = '0' and rom_bank1_q = "111" and addr_bus_i >= X"7B00" and addr_bus_i <= X"7EFF"   else
+	spi_cs_s	<= '1'  when	sltsl_rom_n_s = '0' and rom_bank1_q = "111" and	addr_bus_i >= X"7B00" and addr_bus_i < X"7F00"   else
 	            '0';
 
 	-- Bus

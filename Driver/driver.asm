@@ -64,7 +64,6 @@ VER_REV		equ	6
 SPIDATA		= $7B00
 SPICTRL		= $7F00
 SPISTATUS	= $7F00
-SPIMODE		= $7F01
 
 ; Comandos SPI:
 CMD0	= 0  | $40
@@ -323,7 +322,6 @@ DRV_NAME:
 
 DRV_TIMI:
 	ret
-
 
 ;-----------------------------------------------------------------------------
 ;
@@ -632,9 +630,7 @@ leitura:
 	ld	d, a
 	pop	af		; HL = ponteiro destino
 	ld	e, a		; BC DE = 32 bits numero do bloco
-	call	enableSPI
 	call	LerBloco	; chamar rotina de leitura de dados
-	call	disableSPI
 	jr	nc,.ok
 	call	marcaErroCartao		; ocorreu erro na leitura, marcar erro
 ;	ld	a, ENRDY	; Not ready
@@ -668,9 +664,7 @@ escrita:
 	ld	d, a
 	pop	af		; HL = ponteiro destino
 	ld	e, a		; BC DE = 32 bits numero do bloco
-	call	enableSPI
 	call	GravarBloco	; chamar rotina de gravacao de dados
-	call	disableSPI
 	jr	nc,.ok2
 	call	marcaErroCartao		; ocorreu erro, marcar nas flags
 	ld	a,EWRERR	; Write error
@@ -866,9 +860,7 @@ DEV_STATUS:
 	ld	a, (iy+FLAGSCARTAO)	; testar bit de erro do cartao nas flags
 	and	c
 	jr	z,.semMudanca	; cartao nao marcado com erro, pula
-	call	enableSPI
 	call	detectaCartao	; erro na deteccao do cartao, tentar re-detectar
-	call	disableSPI
 	jr	c,.cartaoComErro	; nao conseguimos detectar, sai com erro
 	ld	a, (iy+NUMSD)		; conseguimos detectar, tira erro nas flags
 	cpl			; inverte bits para fazer o AND
@@ -990,7 +982,6 @@ pegaWorkArea:
 	ex	af,af'
 	xor	a
 	ld	ix, GWORK
-	call	disableSPI
 	call	CALBNK
 	ld	l,(ix)		; em HL tem o ponteiro da nossa area da RAM
 	ld	h,(ix+1)
@@ -1732,25 +1723,6 @@ blocoParaByte:
 ; Funcoes utilitarias
 ; ------------------------------------------------
 
-; ------------------------------------------------
-; Enable the SPI interface
-; ------------------------------------------------
-enableSPI:
-	push	af
-	ld	a, 1
-	ld	(SPIMODE), a
-	pop	af
-	ret
-
-; ------------------------------------------------
-; Disable the SPI interface
-; ------------------------------------------------
-disableSPI:
-	push	af
-	ld	a, 0
-	ld	(SPIMODE), a
-	pop	af
-	ret
 
 ; ------------------------------------------------
 ; Imprime string na tela apontada por DE

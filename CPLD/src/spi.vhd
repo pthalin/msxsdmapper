@@ -22,11 +22,12 @@ end entity;
 
 architecture Behavioral of spi is
 
+	signal spi_cs_s			: std_logic;
 	signal spi_data_q			: std_logic_vector(7 downto 0);
 	-- State type of the SPI transfer state machine
 	type   state_type_t is (s_idle, s_running, s_done);
 	signal state_s				: state_type_t;
-	signal shift_reg_s		: std_logic_vector(7 downto 0);	-- Shift register
+	signal shift_reg_s		: std_logic_vector(8 downto 0);	-- Shift register
 	signal spi_data_buf_s	: std_logic_vector(7 downto 0);	-- Buffer to hold data to be sent
 	signal start_s				: std_logic;							-- Start transmission flag
 	signal count_q				: unsigned(3 downto 0);				-- Number of bits transfered
@@ -36,6 +37,8 @@ architecture Behavioral of spi is
 	signal ff_q, ff_clr_s	: std_logic;
 
 begin
+
+	spi_cs_s <= '1' when cs_i = '1' and (rd_n_i = '0' or wr_n_i = '0')	else '0';
 
 	-- flip-flop
 	process(ff_clr_s, clock_i)
@@ -52,12 +55,12 @@ begin
 						(others => 'Z');
 
 	-- R/W port
-	process (reset_n_i, ff_clr_s, cs_i)
+	process (reset_n_i, ff_clr_s, spi_cs_s)
 	begin
 		if reset_n_i = '0' or ff_clr_s = '1' then
 			spi_data_buf_s	<= (others => '1');
 			start_s			<= '0';
-		elsif rising_edge(cs_i) then						-- only works if rising_edge
+		elsif rising_edge(spi_cs_s) then						-- only works if rising_edge
 			if rd_n_i = '0' then
 				spi_data_buf_s <= (others => '1');
 			else
@@ -85,7 +88,7 @@ begin
 				when s_idle =>
 					if ff_q = '1' then
 						count_q     <= (others => '0');
-						shift_reg_s <= spi_data_buf_s;
+						shift_reg_s <= spi_data_buf_s & '1';
 						state_s     <= s_running;
 					end if;
 
@@ -93,7 +96,7 @@ begin
 					if prev_spi_clk_s = '1' and spi_clk_buf_s = '0' then
 						spi_clk_out_s <= '0';
 						count_q       <= count_q + 1;
-						shift_reg_s   <= shift_reg_s(6 downto 0) & spi_miso_i;
+						shift_reg_s   <= shift_reg_s(7 downto 0) & spi_miso_i;
 						if count_q = "0111" then
 							state_s		<= s_done;
 							ff_clr_s		<= '1';
@@ -103,7 +106,7 @@ begin
 					end if;
 
 				when s_done =>
-					spi_data_q	<= shift_reg_s;
+					spi_data_q	<= shift_reg_s(7 downto 0);
 					state_s		<= s_idle;
 					ff_clr_s		<= '0';
 				when others =>
@@ -126,7 +129,7 @@ begin
 		end if;
 	end process;
 
-	spi_mosi_o <= shift_reg_s(7);
+	spi_mosi_o <= shift_reg_s(8);
 	spi_sclk_o <= spi_clk_out_s;
 
 end architecture;
