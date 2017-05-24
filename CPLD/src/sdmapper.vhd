@@ -152,7 +152,20 @@ begin
 	-- b5 : 0=Write protecton enabled for SD card slot-1
 	-- b6 : SW0 status. 0=RAM disabled, 1=RAM enabled
 	-- b7 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
-	flags_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
+
+--	flags_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
+
+	-- Old fashion
+	--;	b0	: 0=SD card present on slot-0
+	--;	b1	: 0=SD card present on slot-1
+	--;	b2	: 0=Write protecton enabled for SD card slot-0
+	--;	b3	: 0=Write protecton enabled for SD card slot-1
+	--;	b4	: SW0 status. 0=RAM enabled, 1=RAM disabled
+	--;	b5	: SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+	--;	b6	: Reserved for future use. Must be masked out from readings.
+	--;	b7	: 1=SPI transfer busy. 0=No ongoing SPI transfer
+
+	flags_s	<= "00" & mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i;
 
 	-- Disk change FFs
 	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(0))
