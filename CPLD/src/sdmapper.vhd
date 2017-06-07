@@ -45,7 +45,7 @@ entity sdmapper is
 		sd_sclk_o		: out   std_logic;
 		sd_mosi_o		: out   std_logic;
 		sd_miso_i		: in    std_logic;
-		sd_wp_n_i		: in    std_logic_vector( 1 downto 0);		-- 0 = Write protected
+		sd_wp_n_i		: in    std_logic_vector( 1 downto 0);		-- 1 = Write protected
 		sd_pres_n_i		: in    std_logic_vector( 1 downto 0)		-- 0 = SD Card present
 	);
 
@@ -68,12 +68,12 @@ architecture Behavioral of sdmapper is
 	signal status_s		: std_logic_vector(7 downto 0);
 	signal spi_ctrl_wr_s	: std_logic;
 	signal spi_ctrl_rd_s	: std_logic;
-	signal spi_mode_q		: std_logic;
+	signal sd_sel_q		: std_logic_vector(1 downto 0);
 
 	-- Flash ASCII16
 	signal rom_bank_wr_s	: std_logic;
 	signal rom_bank1_q	: std_logic_vector(2 downto 0);
-	signal rom_bank2_q	: std_logic_vector(2 downto 0);
+	signal rom_bank2_q	: std_logic_vector(3 downto 0);
 
 begin
 
@@ -141,28 +141,20 @@ begin
 	iomegaram_s	<= '1' when io_cs = '1' and addr_bus_i(7 downto 1) = "1000111"				else '0';	-- Acesso I/O portas $8E a $8F
 
 	-- Status flags
-	-- b0 : 1=SD Card on slot-0 changed since last read
-	-- b1 : 1=SD Card on slot-1 changed since last read
-	-- b2 : 0=SD card present on slot-0
-	-- b3 : 0=SD card present on slot-1
-	-- b4 : 0=Write protecton enabled for SD card slot-0
-	-- b5 : 0=Write protecton enabled for SD card slot-1
-	-- b6 : SW0 status. 0=RAM disabled, 1=RAM enabled
-	-- b7 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
-
---	status_s	<= mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i & sd_chg_q;
-
-	-- Old fashion
-	--;	b0	: 0=SD card present on slot-0
-	--;	b1	: 0=SD card present on slot-1
-	--;	b2	: 0=Write protecton enabled for SD card slot-0
-	--;	b3	: 0=Write protecton enabled for SD card slot-1
-	--;	b4	: SW0 status. 0=RAM enabled, 1=RAM disabled
-	--;	b5	: SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
-	--;	b6	: Reserved for future use. Must be masked out from readings.
-	--;	b7	: 1=SPI transfer busy. 0=No ongoing SPI transfer
-
-	status_s	<= "00" & mr_mp_i & dis_mapper_i & sd_wp_n_i & sd_pres_n_i;
+	-- If no SD card is selected:
+	-- b7-b2 : always 0
+	-- b1 : SW0 status. 0=RAM disabled, 1=RAM enabled
+	-- b0 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+	--
+	-- If any SD card is selected:
+	-- b7-b3 : always 0
+	-- b2 : 1=Write protecton enabled for SD card slot selected
+	-- b1 : 0=SD card present on slot selected
+	-- b0 : 1=SD Card on slot selected changed since last read
+	status_s	<= "000000" & mr_mp_i & dis_mapper_i							when sd_sel_q = "00"	else		-- No SD selected
+					"00000" & sd_wp_n_i(0) & sd_pres_n_i(0) & sd_chg_q(0)	when sd_sel_q = "01"	else		-- SD 1 selected
+					"00000" & sd_wp_n_i(1) & sd_pres_n_i(1) & sd_chg_q(1)	when sd_sel_q = "10"	else		-- SD 2 selected
+					(others => '-');
 
 	-- Megarom ASCII16
 	-- 6000 = 011 00...
@@ -177,14 +169,14 @@ begin
 	process (reset_n_i, rom_bank_wr_s)
 	begin
 		if reset_n_i = '0' then
-			rom_bank1_q		<= "000";
-			rom_bank2_q		<= "001";
+			rom_bank1_q		<= (others => '0');
+			rom_bank2_q		<= (others => '0');
 		elsif falling_edge(rom_bank_wr_s) then
 			case addr_bus_i(12) is
 				when '0'   =>
 					rom_bank1_q		<= data_bus_io(2 downto 0);
 				when '1'   =>
-					rom_bank2_q		<= data_bus_io(2 downto 0);
+					rom_bank2_q		<= data_bus_io(3 downto 0);
 				when others =>
 					null;
 			end case;
@@ -193,15 +185,15 @@ begin
 
 	-- Flash control
 	rom_a_o <= 
-		rom_bank1_q 	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0'	else
-		rom_bank2_q		when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'	else
+		rom_bank1_q 				when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0'	else
+		rom_bank2_q(2 downto 0)	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'	else
 		(others => '-');
 
 	-- Flash /CS control
 	rom_ce_n_o <=
 		-- Excludes SPI range
 		'0'	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0' and rd_n_i = '0'	and spi_cs_s = '0'	else
-		'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'													else
+		'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0' and rom_bank2_q(3) = '1'					else		-- Only if bank > 7
 		'1';
 
 	-- Flash /WE control
@@ -209,18 +201,22 @@ begin
 						'1';
 
 	-- Disk change FFs
-	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(0))
+	process (reset_n_i, spi_ctrl_rd_s, sd_sel_q, sd_pres_n_i(0))
 	begin
-		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
+		if reset_n_i = '0' then
+			sd_chg_q(0) <= '0';
+		elsif spi_ctrl_rd_s = '1' and sd_sel_q = "01" then
 			sd_chg_q(0) <= '0';
 		elsif falling_edge(sd_pres_n_i(0)) then
 			sd_chg_q(0) <= '1';
 		end if;
 	end process;
 
-	process (reset_n_i, spi_ctrl_rd_s, sd_pres_n_i(1))
+	process (reset_n_i, spi_ctrl_rd_s, sd_sel_q, sd_pres_n_i(1))
 	begin
-		if reset_n_i = '0' or spi_ctrl_rd_s = '1' then
+		if reset_n_i = '0' then
+			sd_chg_q(1) <= '0';
+		elsif spi_ctrl_rd_s = '1' and sd_sel_q = "10" then
 			sd_chg_q(1) <= '0';
 		elsif falling_edge(sd_pres_n_i(1)) then
 			sd_chg_q(1) <= '1';
@@ -235,12 +231,15 @@ begin
 	process (reset_n_i, spi_ctrl_wr_s)
 	begin
 		if reset_n_i = '0' then
-			sd_cs_n_o	<= "11";
+			sd_sel_q		<= "00";
 		elsif falling_edge(spi_ctrl_wr_s) then
-			sd_cs_n_o	<= data_bus_io(1 downto 0);
+			sd_sel_q		<= data_bus_io(1 downto 0);
 		end if;
 	end process;
 
+	sd_cs_n_o	<= "10"	when sd_sel_q = "01"	else		-- SD 1 selected
+						"01"	when sd_sel_q = "10"	else		-- SD 2 selected
+						"11";
 
 	-- 7B00 = 0111 1011
 	-- 7F00 = 0111 1111
