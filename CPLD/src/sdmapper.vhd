@@ -164,7 +164,7 @@ begin
 	-- 7800 = 011 11...
 
 	rom_bank_wr_s <= 
-		'1' when sltsl_n_i = '0' and wr_n_i = '0' and addr_bus_i(15 downto 13) = "011" and addr_bus_i(11) = '0'	else
+		'1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and addr_bus_i(15 downto 13) = "011" and addr_bus_i(11) = '0'	else
 		'0';
 
 	-- Bank write
@@ -252,9 +252,10 @@ begin
 		end if;
 	end process;
 
-	sd_cs_n_o	<= "10"	when sd_sel_q = "01"	else		-- SD 1 selected
-						"01"	when sd_sel_q = "10"	else		-- SD 2 selected
-						"11";
+--	sd_cs_n_o	<= "10"	when sd_sel_q = "01"	else		-- SD 1 selected
+--						"01"	when sd_sel_q = "10"	else		-- SD 2 selected
+--						"11";
+	sd_cs_n_o <= not sd_sel_q;
 
 	-- 7B00 = 0111 1011
 	-- 7F00 = 0111 1111
