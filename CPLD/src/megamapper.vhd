@@ -89,8 +89,10 @@ begin
 	end process;
 
 	-- Leitura do registro da mapper (megaram nao tem leitura de registro)
-	cpu_d		<= (others => 'Z') when mp_rd = '0' 	else 
-					"111" & ram_q(to_integer(unsigned(cpu_a(1 downto 0))))(4 downto 0);
+--	cpu_d		<= (others => 'Z') when mp_rd = '0' 	else 
+--					"111" & ram_q(to_integer(unsigned(cpu_a(1 downto 0))))(4 downto 0);
+	cpu_d	<= "111" & ram_q(to_integer(unsigned(cpu_a(1 downto 0))))(4 downto 0)  when mp_rd = '1' 	else 
+				(others => 'Z');
 
 	busdir_n <= not mp_rd;
 

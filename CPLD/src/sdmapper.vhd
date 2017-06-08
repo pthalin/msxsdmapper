@@ -65,6 +65,7 @@ architecture Behavioral of sdmapper is
 	-- SPI port
 	signal spi_cs_s		: std_logic;
 	signal sd_chg_q		: std_logic_vector(1 downto 0);
+	signal sd_chg_s		: std_logic_vector(1 downto 0);
 	signal status_s		: std_logic_vector(7 downto 0);
 	signal spi_ctrl_wr_s	: std_logic;
 	signal spi_ctrl_rd_s	: std_logic;
@@ -152,8 +153,8 @@ begin
 	-- b1 : 0=SD card present on slot selected
 	-- b0 : 1=SD Card on slot selected changed since last read
 	status_s	<= "000000" & mr_mp_i & dis_mapper_i							when sd_sel_q = "00"	else		-- No SD selected
-					"00000" & sd_wp_n_i(0) & sd_pres_n_i(0) & sd_chg_q(0)	when sd_sel_q = "01"	else		-- SD 1 selected
-					"00000" & sd_wp_n_i(1) & sd_pres_n_i(1) & sd_chg_q(1)	when sd_sel_q = "10"	else		-- SD 2 selected
+					"00000" & sd_wp_n_i(0) & sd_pres_n_i(0) & sd_chg_s(0)	when sd_sel_q = "01"	else		-- SD 1 selected
+					"00000" & sd_wp_n_i(1) & sd_pres_n_i(1) & sd_chg_s(1)	when sd_sel_q = "10"	else		-- SD 2 selected
 					(others => '-');
 
 	-- Megarom ASCII16
@@ -162,8 +163,9 @@ begin
 	-- 7000 = 011 10...
 	-- 7800 = 011 11...
 
-	rom_bank_wr_s	<= '1' when sltsl_n_i = '0' and wr_n_i = '0' and (addr_bus_i = X"6000" or addr_bus_i = X"7000")	else
-							'0';
+	rom_bank_wr_s <= 
+		'1' when sltsl_n_i = '0' and wr_n_i = '0' and addr_bus_i(15 downto 13) = "011" and addr_bus_i(11) = '0'	else
+		'0';
 
 	-- Bank write
 	process (reset_n_i, rom_bank_wr_s)
@@ -205,10 +207,12 @@ begin
 	begin
 		if reset_n_i = '0' then
 			sd_chg_q(0) <= '0';
-		elsif spi_ctrl_rd_s = '1' and sd_sel_q = "01" then
-			sd_chg_q(0) <= '0';
-		elsif falling_edge(sd_pres_n_i(0)) then
+		elsif sd_pres_n_i(0) = '1' then
 			sd_chg_q(0) <= '1';
+		elsif falling_edge(spi_ctrl_rd_s) then
+			if sd_sel_q = "01" then
+				sd_chg_q(0) <= '0';
+			end if;
 		end if;
 	end process;
 
@@ -216,10 +220,21 @@ begin
 	begin
 		if reset_n_i = '0' then
 			sd_chg_q(1) <= '0';
-		elsif spi_ctrl_rd_s = '1' and sd_sel_q = "10" then
-			sd_chg_q(1) <= '0';
-		elsif falling_edge(sd_pres_n_i(1)) then
+		elsif sd_pres_n_i(1) = '1' then
 			sd_chg_q(1) <= '1';
+		elsif falling_edge(spi_ctrl_rd_s) then
+			if sd_sel_q = "10" then
+				sd_chg_q(1) <= '0';
+			end if;
+		end if;
+	end process;
+
+	process (reset_n_i, spi_ctrl_rd_s)
+	begin
+		if reset_n_i = '0' then
+			sd_chg_s <= (others => '0');
+		elsif rising_edge(spi_ctrl_rd_s) then
+			sd_chg_s <= sd_chg_q;
 		end if;
 	end process;
 
