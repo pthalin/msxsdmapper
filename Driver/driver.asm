@@ -16,8 +16,8 @@
 ;	<read>
 ;	b0	: 0=SD card present on slot-0
 ;	b1	: 0=SD card present on slot-1
-;	b2	: 0=Write protecton enabled for SD card slot-0
-;	b3	: 0=Write protecton enabled for SD card slot-1
+;	b2	: 1=Write protecton enabled for SD card slot-0
+;	b3	: 1=Write protecton enabled for SD card slot-1
 ;	b4	: SW0 status. 0=RAM enabled, 1=RAM disabled
 ;	b5	: SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
 ;	b6	: Reserved for future use. Must be masked out from readings.
@@ -365,7 +365,7 @@ DRV_INIT:
 
 	ld	de,strTitle		; prints the title 
 	call	printString
-
+	call	disableSDs
 	call	SDMAPPERINIT		; SD-Mapper exclusive init
 
 SDHCDEVINIT:	; FBLabs SDHC Interface initialization
@@ -439,9 +439,11 @@ SDHCDEVINIT:	; FBLabs SDHC Interface initialization
 	call	CHPUT
 	ld	a, ' '
 	call	CHPUT
-	ld	c, (iy+NUMSD)
+	ld	a, (iy+NUMSD)
+	ld	(SPICTRL), a
 	ld	a, (SPISTATUS)		; testar se cartao esta inserido
-	and	c			; C contem 1 se cartao 1, 2 se cartao 2
+	call	disableSDs
+	and	$02
 	jr	z,.naoVazio
 	ld	de, strVazio		; nao tem cartao no slot
 	call	printString
@@ -449,7 +451,7 @@ SDHCDEVINIT:	; FBLabs SDHC Interface initialization
 .naoVazio:
 	call	detectaCartao		; tem cartao no slot, inicializar e detectar
 	jr	nc,.detectou
-	call	desabilitaSDs
+	call	disableSDs
 	ld	de, strNaoIdentificado
 	call	printString
 .marcaErro:
@@ -483,11 +485,11 @@ SDHCDEVINIT:	; FBLabs SDHC Interface initialization
 SDMAPPERINIT:		; This block is exclusive for the SD-Mapper
 	ld	de, strMr_mp_desativada
 	ld	a, (SPISTATUS)		; testar se mapper/megaram esta ativa
-	and	$10
+	and	$01
 	jr	z,.print		; desativada, pula
 	ld	de, strMapper
 	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
-	and	$20
+	and	$02
 	jp	nz,printString
 	ld	de, strMegaram		; Megaram ativa
 .print:
@@ -853,9 +855,11 @@ DEV_STATUS:
 	call	pegaWorkArea	; HL=IY=Work area pointer
 	pop	af
 	ld	(iy+NUMSD),a	; salva numero do device atual (1 ou 2)
-	ld	c,a		; c=device number
+	ld	c, a
+	ld	(SPICTRL), a	; selects SD
 	ld	a, (SPISTATUS)	; testar se cartao esta inserido
-	and	c		; C contem 1 se cartao 1, 2 se cartao 2
+	call	disableSDs
+	and	$02
 	jr	nz,.cartaoComErro	; se slot do cartao estiver vazio, marcamos o erro nas flags
 	ld	a, (iy+FLAGSCARTAO)	; testar bit de erro do cartao nas flags
 	and	c
@@ -1002,8 +1006,10 @@ testaCartao:
 	pop	af
 	ld	(iy+NUMSD), a	; salva numero do device atual (1 ou 2)
 	ld	c, a
+	ld	(SPICTRL), a	; Selects SD
 	ld	a, (SPISTATUS)	; testar se cartao esta inserido
-	and	c		; C contem 1 se cartao 1, 2 se cartao 2
+	call	disableSDs
+	and	$02
 	jr	nz,.saicomerro				
 	ld	a, (iy+FLAGSCARTAO)	; testar bit de erro do cartao nas flags
 	and	c
@@ -1037,11 +1043,11 @@ marcaErroCartao:
 ; Destroi AF, C
 ;------------------------------------------------
 testaWP:
-	ld	c, (iy+NUMSD)	; cartao atual (1 ou 2)
-	rlc	c		; desloca para apontar para bits 2 ou 3 para cartoes 1 ou 2 respectivamente
-	rlc	c
+	ld	a, (iy+NUMSD)	; cartao atual (1 ou 2)
+	ld	(SPICTRL), a
 	ld	a, (SPISTATUS)	; testar se cartao esta protegido
-	and	c
+	call	disableSDs
+	and	$04
 	ret			; se A for 0 cartao esta protegido
 
 ;------------------------------------------------
@@ -1124,7 +1130,7 @@ detectaCartao:
 	ld	(ix+15), a	; salva informacao da versao do SD (V1 ou V2) no byte 15 do CID
 	call	z,mudarTamanhoBlocoPara512	; se bit CCS do OCR for 1, eh cartao SDV2 (Block address - SDHC ou SDXD)
 	ret	c		; e nao precisamos mudar tamanho do bloco para 512
-	call	desabilitaSDs
+	call	disableSDs
 				; agora vamos calcular o total de blocos dependendo dos dados do CSD
 	call	calculaBLOCOSoffset	; calcular em IX e HL o offset correto do buffer que armazena total de blocos
 	push	iy		; copiamos IY para HL
@@ -1301,7 +1307,7 @@ lerBlocoCxD:
 	ld	a, (hl)		; byte de resposta
 	or	a
 	ex	de,hl
-	jr		desabilitaSDs
+	jr		disableSDs
 
 .r800:
 	ld	bc,16
@@ -1313,7 +1319,7 @@ lerBlocoCxD:
 ; Destroi AF, B, DE
 ; ------------------------------------------------
 iniciaSD:
-	call	desabilitaSDs
+	call	disableSDs
 
 	ld	b, 10		; enviar 80 pulsos de clock com cartao desabilitado
 enviaClocksInicio:
@@ -1337,9 +1343,9 @@ SD_SEND_CMD0:
 ; Desabilitar (de-selecionar) todos os cartoes
 ; Nao destroi registradores
 ; ------------------------------------------------
-desabilitaSDs:
+disableSDs:
 	push	af
-	ld	a, $FF		; todos os /CS em 1
+	xor	a
 	ld	(SPICTRL), a
 	pop	af
 	ret
@@ -1378,7 +1384,7 @@ SD_SEND_CMD_GET_ERROR:
 ; ------------------------------------------------
 setaErro:
 	scf
-	jr		desabilitaSDs
+	jr		disableSDs
 
 ; ------------------------------------------------
 ; Enviar comando em A com 2 bytes de parametros
@@ -1499,14 +1505,13 @@ WAIT_RESP_NO_00:
 	ret
 
 ; ------------------------------------------------
-; Ativa (seleciona) cartao atual baixando seu /CS
+; Ativa (seleciona) cartao atual
 ; Nao destroi registradores
 ; ------------------------------------------------
 setaSDAtual:
 	push	af
 	ld	a, (SPIDATA)	; dummy read
 	ld	a, (iy+NUMSD)
-	cpl			; inverte bits
 	ld	(SPICTRL), a
 	pop	af
 	ret
@@ -1623,7 +1628,7 @@ GravarBloco:
 	xor	a		; zera carry e informa nenhum erro
 terminaLeituraEscritaBloco:
 	push	af
-	call	desabilitaSDs	; desabilitar todos os cartoes
+	call	disableSDs	; desabilitar todos os cartoes
 	pop	af
 	ret
 
