@@ -45,7 +45,7 @@ entity sdmapper is
 		sd_sclk_o		: out   std_logic;
 		sd_mosi_o		: out   std_logic;
 		sd_miso_i		: in    std_logic;
-		sd_wp_n_i		: in    std_logic_vector( 1 downto 0);		-- 1 = Write protected
+		sd_wp_i			: in    std_logic_vector( 1 downto 0);		-- 1 = Write protected
 		sd_pres_n_i		: in    std_logic_vector( 1 downto 0)		-- 0 = SD Card present
 	);
 
@@ -153,8 +153,8 @@ begin
 	-- b1 : 0=SD card present on slot selected
 	-- b0 : 1=SD Card on slot selected changed since last read
 	status_s	<= "000000" & mr_mp_i & dis_mapper_i							when sd_sel_q = "00"	else		-- No SD selected
-					"00000" & sd_wp_n_i(0) & sd_pres_n_i(0) & sd_chg_s(0)	when sd_sel_q = "01"	else		-- SD 1 selected
-					"00000" & sd_wp_n_i(1) & sd_pres_n_i(1) & sd_chg_s(1)	when sd_sel_q = "10"	else		-- SD 2 selected
+					"00000" & sd_wp_i(0) & sd_pres_n_i(0) & sd_chg_s(0)	when sd_sel_q = "01"	else		-- SD 1 selected
+					"00000" & sd_wp_i(1) & sd_pres_n_i(1) & sd_chg_s(1)	when sd_sel_q = "10"	else		-- SD 2 selected
 					(others => '-');
 
 	-- Megarom ASCII16

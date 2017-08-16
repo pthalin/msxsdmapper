@@ -50,13 +50,13 @@ NET "rom_ce_n_o"        LOC = "P77" ;
 NET "rom_we_n_o"        LOC = "P76" ; 
 NET "sd_cs_n_o<0>"      LOC = "P93" ; 
 NET "sd_cs_n_o<1>"      LOC = "P94" ; 
-NET "sd_pres_n_i<0>"    LOC = "P10" ; 
-NET "sd_pres_n_i<1>"    LOC = "P96" ; 
 NET "sd_miso_i"         LOC = "P4"  ; 
 NET "sd_mosi_o"         LOC = "P7"  ; 
 NET "sd_sclk_o"         LOC = "P6"  ; 
-NET "sd_wp_n_i<0>"      LOC = "P9"  ; 
-NET "sd_wp_n_i<1>"      LOC = "P8"  ; 
+NET "sd_pres_n_i<0>"    LOC = "P10" ; 
+NET "sd_pres_n_i<1>"    LOC = "P96" ; 
+NET "sd_wp_i<0>"        LOC = "P9"  ; 
+NET "sd_wp_i<1>"        LOC = "P8"  ; 
 
 #PACE: Start of PACE Area Constraints
 
