@@ -128,7 +128,7 @@ begin
 	-- Glue Logic
 
 	-- Enable portas I/O
-	io_cs			<= not iorq_n_i and m1_n_i;
+	io_cs			<= not iorq_n_i and m1_n_i and dis_mapper_i;
 
 	-- Slot expander address select
 	ffff    <= '1' when addr_bus_i = X"FFFF" else '0';
