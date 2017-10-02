@@ -14,21 +14,18 @@
 ; 7B00h~7EFFh	: SPI data transfer window (read/write)
 ; 7F00h		: Interface status and card select register (read/write)
 ;	<read>
-;	b0	: 0=SD card present on slot-0
-;	b1	: 0=SD card present on slot-1
-;	b2	: 1=Write protecton enabled for SD card slot-0
-;	b3	: 1=Write protecton enabled for SD card slot-1
-;	b4	: SW0 status. 0=RAM enabled, 1=RAM disabled
-;	b5	: SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
-;	b6	: Reserved for future use. Must be masked out from readings.
-;	b7	: 1=SPI transfer busy. 0=No ongoing SPI transfer
+;	If no SD card is selected:
+;	b7-b2 : always 0
+;	b1 : SW0 status. 0=RAM disabled, 1=RAM enabled
+;	b0 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+;	If any SD card is selected:
+;	b7-b3 : always 0
+;	b2 : 1=Write protecton enabled for SD card slot selected
+;	b1 : 0=SD card present on slot selected
+;	b0 : 1=SD Card on slot selected changed since last read
 ;	<write>
 ;	b0	: SD card slot-0 chip-select (0=selected)
 ;	b1	: SD card slot-1 chip-select (0=selected)
-
-; 7F01h		: Mode configuration register (write only)
-;	b0	: 0=ROM mode, SPI interface disabled, 1=SPI interface enabled
-
 
 
 	output	"driver.bin"
@@ -1963,7 +1960,7 @@ strBootpaused:
 
 strCopyright:
 	db	"Copyright (c) 2014 Fabio Belavenuto",13,10
-	db	"Licenced under CERN OHL v1.1",13,10
+	db	"Licensed under CERN OHL v1.1",13,10
 	db	"http://ohwr.org/cernohl",13,10
 	db	"PCB designed by Luciano Sturaro",13,10
 	; fall throw
