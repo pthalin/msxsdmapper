@@ -144,8 +144,8 @@ begin
 	-- Status flags
 	-- If no SD card is selected:
 	-- b7-b2 : always 0
-	-- b1 : SW0 status. 0=RAM disabled, 1=RAM enabled
-	-- b0 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+	-- b1 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+	-- b0 : SW0 status. 0=RAM disabled, 1=RAM enabled
 	--
 	-- If any SD card is selected:
 	-- b7-b3 : always 0
