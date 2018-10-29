@@ -16,7 +16,7 @@
 ;	<read>
 ;	If no SD card is selected:
 ;	b7-b2 : always 0
-;	b1 : SW1 status. 0=RAM mode: MegaRAM, 1=RAM mode: Memory Mapper
+;	b1 : SW1 status (no use)
 ;	b0 : SW0 status. 0=RAM disabled, 1=RAM enabled
 ;	If any SD card is selected:
 ;	b7-b3 : always 0
@@ -27,6 +27,8 @@
 ;	b0	: SD card slot-0 chip-select (1=selected)
 ;	b1	: SD card slot-1 chip-select (1=selected)
 
+; 7F02h		: 8-bit timer (97.65625 KHz frequency, 10.24uS resolution) (read/write)
+; When a value is written, the timer will decrease it until it reaches zero
 
 	output	"driver.bin"
 
@@ -61,6 +63,7 @@ VER_REV		equ	6
 SPIDATA		= $7B00
 SPICTRL		= $7F00
 SPISTATUS	= $7F00
+TIMERREG	= $7F02
 
 ; Comandos SPI:
 CMD0	= 0  | $40
@@ -90,8 +93,6 @@ NUMBLOCOS	= 50	; 1 byte
 TEMP		= 52	; 1 byte
 BLOCOS1		= 56	; 3 bytes
 BLOCOS2		= 60	; 3 bytes
-
-
 
 ;-----------------------------------------------------------------------------
 ;
@@ -480,16 +481,11 @@ SDHCDEVINIT:	; FBLabs SDHC Interface initialization
 
 
 SDMAPPERINIT:		; This block is exclusive for the SD-Mapper
-	ld	de, strMr_mp_desativada
+	ld	de, strMemDisabled
 	ld	a, (SPISTATUS)		; testar se mapper/megaram esta ativa
 	and	$01
-	jr	z,.print		; desativada, pula
-	ld	de, strMapper
-	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
-	and	$02
-	jp	nz,printString
-	ld	de, strMegaram		; Megaram ativa
-.print:
+	jp	z,printString		; desativada, pula
+	ld	de, strMemEnabled
 	jp	printString
 
 ;-----------------------------------------------------------------------------
@@ -1973,12 +1969,10 @@ strVazio:
 strNaoIdentificado:
 	db	"Unknown!",13,10,0
 			;----------------------------------------
-strMr_mp_desativada:
-	db	"Slot expander/Mapper/MegaRAM disabled",13,10,0
-strMapper:
+strMemDisabled:
+	db	"Slot expander/Mapper disabled",13,10,0
+strMemEnabled:
 	db	"Slot expanded and Memory Mapper enabled",13,10,0
-strMegaram:
-	db	"Slot expander and MegaRAM enabled",13,10,0
 strSDV1:
 	db	"SDV1 - ",0
 strSDV2:
