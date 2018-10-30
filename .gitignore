@@ -1,6 +1,11 @@
 *.cmd
 *.log
 *.lst
+*.ihx
+*.lk
+*.map
+*.noi
+
 /CPLD/_xmsgs
 /CPLD/iseconfig
 /CPLD/*.xwbt
@@ -37,3 +42,4 @@
 /CPLD/*.err
 /CPLD/xlnx_auto_0_xdb
 /CPLD/xst/work
+/Updater/NEW/obj

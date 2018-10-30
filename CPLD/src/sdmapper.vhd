@@ -33,7 +33,7 @@ entity sdmapper is
 		sltsl_n_i		: in    std_logic;
 		busdir_n_o		: out   std_logic;
 		-- ROM interface
-		rom_a_o			: out   std_logic_vector(16 downto 14);
+		rom_a_o			: out   std_logic_vector(17 downto 14);
 		rom_ce_n_o		: out   std_logic;
 		rom_we_n_o		: out   std_logic;
 		-- RAM interface
@@ -186,7 +186,8 @@ begin
 	end process;
 
 	-- Flash control
-	rom_a_o <= 
+	rom_a_o(17)	<= sw_i(1);
+	rom_a_o(16 downto 14) <= 
 		rom_bank1_q 				when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0'	else
 		rom_bank2_q(2 downto 0)	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0'	else
 		(others => '-');
