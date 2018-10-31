@@ -39,7 +39,7 @@ unsigned char *HCHPU = (volatile unsigned char *)0xFDA4;
 static TDevInfo devInfo;
 static unsigned char numMprPages, mprSegments[8], curSegm;
 static unsigned char hooks[3], pfi, askslot, onlyErase, resetAtEnd;
-static unsigned char buffer[64];
+static unsigned char buffer[64], pause;
 static unsigned char c, t1, t2, slot, swId, isMain, isSlave;
 static int fhandle, i, r;
 static unsigned long fileSize, seekpos;
@@ -70,6 +70,7 @@ showUsage:
 	pfi = 0;
 	onlyErase = 0;
 	askslot = 0;
+	pause = 0;
 	for (i = 0; i < argc; i++) {
 		if (argv[i][0] == '/') {
 			if (argv[i][1] == 'h' || argv[i][1] == 'H') {
@@ -82,6 +83,9 @@ showUsage:
 				++pfi;
 			} else if (argv[i][1] == 's' || argv[i][1] == 'S') {
 				askslot = 1;
+				++pfi;
+			} else if (argv[i][1] == 'p' || argv[i][1] == 'P') {
+				pause = 1;
 				++pfi;
 			} else {
 				goto showUsage;
@@ -321,6 +325,12 @@ readErr:
 	}
 	puts(ok0);
 	close(fhandle);
+
+	if (pause == 1) {
+		puts(pauseMsg);
+		getchar();
+		puts(crlf);
+	}
 
 	__asm__("di");
 	eraseFlash(slot);

@@ -25,7 +25,8 @@ const char *usage3 =			"\r\n"
 								"Options:\r\n"
 								"     /h : Show this help.\r\n"
 								"     /s : Ask the interface slot.\r\n"
-								"     /e : Only erase flash and exit.\r\n";
+								"     /e : Only erase flash and exit.\r\n"
+								"     /p : Pause before flashing.\r\n";
 const char *crlf =				"\r\n";
 const char *whatslot =			"What is the interface slot? (0-3)";
 const char *whatsubslot =		"What is the subslot? (0-3)";
@@ -47,6 +48,7 @@ const char *filesizeError =		"ERROR: File size must be 128KB\r\n";
 const char *errorNotNxtDrv =	"This file is not a Nextor driver!\r\n";
 const char *errorWrongDrv =		"Wrong driver!\r\n";
 const char *errorSeek =			"Error seeking!\r\n";
+const char *pauseMsg =			"Press any key to continue.";
 const char *erasingFlash =		"Erasing flash: ";
 const char *writingFlash =		"Writing flash: ";
 const char *errorWriting =		"\r\nError!\r\n";

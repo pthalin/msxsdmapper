@@ -23,7 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "interface.h"
 
 /* Constants */
-const char *title1 =			"FBLabs SDHC/SDMMR programmer utility\r\n";
+const char *title1 =			"FBLabs SDHC programmer utility\r\n";
 const char *usage2 =			"     fbl-upd /opts <filename.ext>\r\n"
 								"Example: fbl-upd DRIVER.ROM\r\n"
 								"         fbl-upd /e\r\n";
@@ -89,23 +89,23 @@ static unsigned char flashIdent(unsigned char manId, unsigned char prodId)
 /******************************************************************************/
 static void flashSendCmd(unsigned char cmd)
 {
-	poke(0x7000, 0x01);		// Bank 1 in the Frame-2 (4000-7FFF)
+	poke(0x7000, 0x09);		// Bank 1 in the Frame-2 (4000-7FFF)
 	poke(0x9555, 0xAA);		// Absolute address 0x05555
-	poke(0x7000, 0x00);		// Bank 0 in the Frame-2 (0000-3FFF)
+	poke(0x7000, 0x08);		// Bank 0 in the Frame-2 (0000-3FFF)
 	poke(0xAAAA, 0x55);		// Absolute address 0x02AAA
-	poke(0x7000, 0x01);		// Bank 1 in the Frame-2 (4000-7FFF)
+	poke(0x7000, 0x09);		// Bank 1 in the Frame-2 (4000-7FFF)
 	poke(0x9555, cmd);
 }
 
 /******************************************************************************/
 static void flashEraseSectorSendCmd(unsigned char sector)
 {
-	poke(0x7000, 0x01);		// Bank 1 in the Frame-2 (4000-7FFF)
+	poke(0x7000, 0x09);		// Bank 1 in the Frame-2 (4000-7FFF)
 	poke(0x9555, 0xAA);		// Absolute address 0x05555
-	poke(0x7000, 0x00);		// Bank 0 in the Frame-2 (0000-3FFF)
+	poke(0x7000, 0x08);		// Bank 0 in the Frame-2 (0000-3FFF)
 	poke(0xAAAA, 0x55);		// Absolute address 0x02AAA
-	poke(0x7000, sector >> 2);		// Bank x in the Frame-2
-	poke(0x8000 + ((sector & 0x02) << 12), FLASHCMD_ERASESECTOR);
+	poke(0x7000, 0x08 | (sector >> 2));		// Bank x in the Frame-2
+	poke(0x8000 | ((sector & 0x03) << 12), FLASHCMD_ERASESECTOR);
 }
 
 
@@ -214,11 +214,10 @@ void eraseFlash(unsigned char slot)
 	puts(erasingFlash);
 	putSlotFrame1(slot);
 	putSlotFrame2(slot);
-	flashSendCmd(FLASHCMD_ERASE);
 	for (i = 0; i < 32; i++) {
+		flashSendCmd(FLASHCMD_ERASE);
 		flashEraseSectorSendCmd(i);
 		waitErase();
-		putchar('.');
 	}
 	flashSendCmd(FLASHCMD_SOFTRESET);
 	putRamFrame1();

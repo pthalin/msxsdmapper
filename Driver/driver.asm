@@ -69,7 +69,7 @@ TIMERREG	= $7F02
 IF_RAM		= 0		; 1=Interface RAM is enabled
 IF_DRVER	= 1		; RAM mode: 0=MegaRAM, 1=MemoryMapper
 IF_M_RAM	= (1 shl IF_RAM)		; bitmask for IF_RAM
-IF_M_DRVER	= (1 shl IF_RMODE)		; bitmask for IF_DRVER
+IF_M_DRVER	= (1 shl IF_DRVER)		; bitmask for IF_DRVER
 
 ; card slot status flags
 SD_DSKCHG	= 0		; SD card changed since last status check
@@ -475,7 +475,7 @@ DRV_INIT:
 	ld	de,strMr_mp_desativada
 	jr	z,.print		; No, skip
 	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
-	and	IF_M_RMODE
+	and	IF_M_DRVER
 	ld	de,strDrvMain
 	jr	nz,.print
 	ld	de, strDrvDev

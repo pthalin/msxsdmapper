@@ -41,6 +41,7 @@ extern const char *filesizeError;
 extern const char *errorNotNxtDrv;
 extern const char *errorWrongDrv;
 extern const char *errorSeek;
+extern const char *pauseMsg;
 extern const char *erasingFlash;
 extern const char *writingFlash;
 extern const char *errorWriting;
