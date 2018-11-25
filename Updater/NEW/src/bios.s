@@ -2,16 +2,20 @@
 	.module bios
 	.optsdcc -mz80
 
+RESET	= 0x0000
+RDSLT	= 0x000C
 CALSLT	= 0x001C
 ENASLT	= 0x0024
-RESET	= 0x0000
 KILBUF	= 0x0156
+CHGCPU	= 0x0180
+GETCPU	= 0x0183
 RAMAD0	= 0xF341				; slotid DOS ram page 0
 RAMAD1	= 0xF342				; slotid DOS ram page 1
 RAMAD2	= 0xF343				; slotid DOS ram page 2
 RAMAD3	= 0xF344				; slotid DOS ram page 3
-EXPTBL	= 0xFCC1				; slotids
 DSKSLT	= 0xF348				; slotid DOS diskrom
+EXPTBL	= 0xFCC1				; slotids
+ROMSLT	= 0xFFF7
 
 	.area	_CODE
 

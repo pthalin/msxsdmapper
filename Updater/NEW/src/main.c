@@ -32,13 +32,13 @@ const unsigned char *DSKSLT = (volatile unsigned char *)0xF348;	// slotid diskro
 
 
 /* Global vars */
-unsigned char *HKEYI = (volatile unsigned char *)0xFD9A;
+//unsigned char *HKEYI = (volatile unsigned char *)0xFD9A;
 unsigned char *HTIMI = (volatile unsigned char *)0xFD9F;
-unsigned char *HCHPU = (volatile unsigned char *)0xFDA4;
+//unsigned char *HCHPU = (volatile unsigned char *)0xFDA4;
 
 static TDevInfo devInfo;
 static unsigned char numMprPages, mprSegments[8], curSegm;
-static unsigned char hooks[3], pfi, askslot, onlyErase, resetAtEnd;
+static unsigned char hooks[1], pfi, askslot, onlyErase, resetAtEnd;
 static unsigned char buffer[64], pause;
 static unsigned char c, t1, t2, slot, swId, isMain, isSlave;
 static int fhandle, i, r;
@@ -49,9 +49,8 @@ static unsigned long fileSize, seekpos;
 static void restoreHooks()
 {
 	// Restore hooks
-	*HKEYI = hooks[0];
-	*HTIMI = hooks[1];
-	*HCHPU = hooks[2];
+	*HTIMI = hooks[0];
+	//*HCHPU = hooks[1];
 }
 
 /******************************************************************************/
@@ -97,13 +96,11 @@ showUsage:
 	}
 
 	// Save hooks
-	hooks[0] = *HKEYI;
-	hooks[1] = *HTIMI;
-	hooks[2] = *HCHPU;
+	hooks[0] = *HTIMI;
+	//hooks[1] = *HCHPU;
 	// Temporary disable hooks
-	*HKEYI = 0xC9;
 	*HTIMI = 0xC9;
-	*HCHPU = 0xC9;
+	//*HCHPU = 0xC9;
 
 	if (askslot == 1) {
 		puts(whatslot);

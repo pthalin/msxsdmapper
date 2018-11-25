@@ -23,6 +23,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "interface.h"
 
 /* Constants */
+const unsigned char *CUR_BANK = (volatile unsigned char *)0x40FF;	// current bank
+
 const char *title1 =			"FBLabs SDHC programmer utility\r\n";
 const char *usage2 =			"     fbl-upd /opts <filename.ext>\r\n"
 								"Example: fbl-upd DRIVER.ROM\r\n"
@@ -154,27 +156,40 @@ exit:
 /******************************************************************************/
 unsigned char detectInterface(unsigned char slot)
 {
+	__asm__("di");
 	putSlotFrame1(slot);
 	putSlotFrame2(slot);
-	flashSendCmd(FLASHCMD_SOFTRESET);
+//	flashSendCmd(FLASHCMD_SOFTRESET);
 	flashSendCmd(FLASHCMD_SOFTIDENTRY);
 	flashIdMan = peek(0x8000);
 	flashIdProd = peek(0x8001);
 	flashSendCmd(FLASHCMD_SOFTRESET);
 	putRamFrame1();
 	putRamFrame2();
+	__asm__("ei");
+//	puthex8(flashIdMan); puts(" ");
+//	puthex8(flashIdProd); puts("\r\n");
 	if (flashIdent(flashIdMan, flashIdProd) == 1) {
+		__asm__("halt");
+		__asm__("di");
 		putSlotFrame1(slot);
-		poke(0x6000, 0x07);				// Driver bank
-		poke(0x7F02, 0x80);				// Initialize
-		c = peek(0x7F02);				// Timer register
-		for (t1 = 0; t1 < 100; t1++) ;	// wait
-		if (peek(0x7F02) != c) {
-			poke(0x6000, 0x00);
+		poke(0x7FF1, 0xAA);				// Initialize timer
+		c = peek(0x7FF1);				// Timer register
+		putRamFrame1();
+		__asm__("ei");
+		__asm__("halt");
+		__asm__("di");
+		putSlotFrame1(slot);
+		if (peek(0x7FF1) != c) {
 			putRamFrame1();
+			__asm__("ei");
 			puts(found);
 			return 1;
 		}
+		putRamFrame1();
+		__asm__("ei");
+		puts(found);
+		return 1;
 	}
 	return 0;
 }
@@ -182,7 +197,7 @@ unsigned char detectInterface(unsigned char slot)
 /******************************************************************************/
 unsigned char verifySwId(unsigned char *str)
 {
-	if (memcmp(str, "SDHC", 4) == 0) {
+	if (memcmp(str, "FBLabs SDHC", 11) == 0) {
 		return 1;
 	}
 	return 0;

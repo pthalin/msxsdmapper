@@ -61,6 +61,9 @@ architecture Behavioral of sdmapper is
 	signal sltsl_rom_n_s	: std_logic;
 	signal sltsl_ram_n_s	: std_logic;
 
+	-- Regs
+	signal regs_cs_s		: std_logic;
+
 	-- SPI port
 	signal spi_cs_s		: std_logic;
 	signal sd_chg_q		: std_logic_vector(1 downto 0);
@@ -194,14 +197,16 @@ begin
 
 	-- Flash /CS control
 	rom_ce_n_o <=
-		-- Excludes SPI range
-		'0'	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0' and rd_n_i = '0'	and spi_cs_s = '0'	else
+		-- Excludes SPI range and regs range
+		'0'	when addr_bus_i(15 downto 14) = "01" and sltsl_rom_n_s = '0' and rd_n_i = '0'	and spi_cs_s = '0' and regs_cs_s = '0'	else
 		'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0' and rom_bank2_q(3) = '1'					else		-- Only if bank > 7
 		'1';
 
 	-- Flash /WE control
 	rom_we_n_o	<=	'0'	when addr_bus_i(15 downto 14) = "10" and sltsl_rom_n_s = '0' and wr_n_i = '0'	else
 						'1';
+
+	regs_cs_s <= '1'	when	sltsl_rom_n_s = '0' and addr_bus_i >= X"7FF0"  	else '0';
 
 	-- Disk change FFs
 	process (reset_n_i, spi_ctrl_rd_s, sd_sel_q, sd_pres_n_i(0))
@@ -240,8 +245,8 @@ begin
 	end process;
 
 	-- SPI
-	spi_ctrl_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F00"	else '0';
-	spi_ctrl_rd_s <= '1' when sltsl_rom_n_s = '0' and rd_n_i = '0' and rom_bank1_q = "111" and addr_bus_i = X"7F00"	else '0';
+	spi_ctrl_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and addr_bus_i = X"7FF0"	else '0';
+	spi_ctrl_rd_s <= '1' when sltsl_rom_n_s = '0' and rd_n_i = '0' and addr_bus_i = X"7FF0"	else '0';
 
 	-- SPI Control register write
 	process (reset_n_i, spi_ctrl_wr_s)
@@ -269,19 +274,19 @@ begin
 		if rising_edge(clock_i) then
 			if tmr_wr_s = '1' then
 				tmr_cnt_q(15 downto 8) <= data_bus_io;
-				tmr_cnt_q( 7 downto 0) <= (others => '0');
+				tmr_cnt_q( 7 downto 0) <= (others => '1');
 			elsif tmr_cnt_q /= 0 then
 				tmr_cnt_q <= tmr_cnt_q - 1;
 			end if;
 		end if;
 	end process;
 
-	tmr_wr_s <= '1' when sltsl_rom_n_s = '0' and rom_bank1_q = "111" and wr_n_i = '0' and addr_bus_i = X"7F02"	else '0';
-	tmr_rd_s <= '1' when sltsl_rom_n_s = '0' and rom_bank1_q = "111" and rd_n_i = '0' and addr_bus_i = X"7F02"	else '0';
+	tmr_wr_s <= '1' when sltsl_rom_n_s = '0' and wr_n_i = '0' and addr_bus_i = X"7FF1"	else '0';
+	tmr_rd_s <= '1' when sltsl_rom_n_s = '0' and rd_n_i = '0' and addr_bus_i = X"7FF1"	else '0';
 
 	-- Bus
 	data_bus_io	<= status_s	when spi_ctrl_rd_s = '1'	else
-						tmr_cnt_q(15 downto 8)	when tmr_rd_s = '1' 			else		-- 40ns * 256 = 10.240 ms
+						tmr_cnt_q(15 downto 8)	when tmr_rd_s = '1' 			else		-- 40ns * 256 = 10240 ns
 						(others => 'Z');
 
 end Behavioral;

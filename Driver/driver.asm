@@ -61,9 +61,9 @@ VER_REV		equ	8
 ; SPI addresses. Check the Technical info above for the bit contents
 
 SPIDATA		= $7B00
-SPICTRL		= $7F00
-SPISTATUS	= $7F00
-TIMERREG	= $7F02
+SPICTRL		= $7FF0
+SPISTATUS	= $7FF0
+TIMERREG	= $7FF1
 
 ; Interface status flags
 IF_RAM		= 0		; 1=Interface RAM is enabled
@@ -123,6 +123,8 @@ ERAFNK	= $00CC		; Erase function key display
 SNSMAT	= $0141		; Read row of keyboard matrix
 KILBUF	= $0156		; Clear keyboard buffer
 EXTROM	= $015F
+CHGCPU	= #0180
+GETCPU	= #0183
 
 ; subROM functions
 SDFSCR	= $0185
@@ -291,7 +293,7 @@ SING_DBL  equ     7820h ;"1-Single side / 2-Double side"
 ;
 
 DRV_NAME:
-	db	"SDHC Driver"
+	db	"FBLabs SDHC"
 	ds	32-($-DRV_NAME)," "
 
 
@@ -385,7 +387,8 @@ DRV_INIT:
 
 .call2:
 ; 2nd call: 
-	call	MYSETSCR		; Set the screen mode
+.call2ini:
+       	call	MYSETSCR		; Set the screen mode
 	call	pegaWorkArea		; HL=IY=Work area pointer
 
 	ld	de,strTitle		; prints the title 
