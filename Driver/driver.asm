@@ -532,19 +532,12 @@ DRV_INIT:
 	xor	a			; 0=Interface status
 	ld	(SPICTRL),a
 	ld	a, (SPISTATUS)		; Check if the mapper/megaRAM is active
+	ld	de,strNextorSS0
 	and	IF_M_RAM		; Is the RAM enabled?
-	ld	de,strMr_mp_desativada
- IFDEF HASMEGARAM
-	jr	z,.print		; No, skip
-	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
-	and	IF_M_DRVER
-	ld	de,strMapper
-	jr	nz,.print
-	ld	de, strMegaram		; Megaram ativa
-.print:
-	jp	printString
- ELSE
-	call	z,printString		; Yes, print
+	jr	nz,.skip1
+	ld	de,strMapperSS0
+.skip1:
+	call	printString		; Yes, print
 	ld	a, (SPISTATUS)		; Get the MainBIOS/DevBIOS switch status
 	and	IF_M_DRVER
 	ld	de,strDrvMain
@@ -552,7 +545,7 @@ DRV_INIT:
 	ld	de, strDrvDev
 .printdrv:
 	jp	printString
- ENDIF
+
 
 
 
@@ -2287,8 +2280,10 @@ strVazio:
 strNaoIdentificado:
 	db	"Unknown!",13,10,0
 ;		 |-------------39 chars----------------|
-strMr_mp_desativada:
-	db	"- Slot expander & Mem Mapper disabled",13,10,0
+strMapperSS0:
+	db	"- Mapper in subslot 0",13,10,0
+strNextorSS0:
+	db	"- Nextor in subslot 0",13,10,0
  IFDEF HASMEGARAM
 strMapper:
 	db	"- Slot expander & Mem Mapper enabled",13,10,0

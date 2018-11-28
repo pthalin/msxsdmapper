@@ -170,7 +170,7 @@ unsigned char detectInterface(unsigned char slot)
 //	puthex8(flashIdMan); puts(" ");
 //	puthex8(flashIdProd); puts("\r\n");
 	if (flashIdent(flashIdMan, flashIdProd) == 1) {
-/*		__asm__("halt");
+		__asm__("halt");
 		__asm__("di");
 		putSlotFrame1(slot);
 		poke(0x7FF1, 0xAA);				// Initialize timer
@@ -182,14 +182,11 @@ unsigned char detectInterface(unsigned char slot)
 		putSlotFrame1(slot);
 		if (peek(0x7FF1) != c) {
 			putRamFrame1();
-			__asm__("ei");*/
+			__asm__("ei");
 			puts(found);
 			return 1;
-/*		}
+		}
 		putRamFrame1();
-		__asm__("ei");
-		puts(found);
-		return 1;*/
 	}
 	return 0;
 }

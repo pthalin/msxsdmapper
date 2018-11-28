@@ -133,15 +133,18 @@ begin
 	-- Glue Logic
 
 	-- Enable portas I/O
-	io_cs			<= not iorq_n_i and m1_n_i and sw_i(0);
+	io_cs			<= not iorq_n_i and m1_n_i;
 
 	-- Slot expander address select
 	ffff    <= '1' when addr_bus_i = X"FFFF" else '0';
 
 	-- Slot Selects
-	sltsl_c			<= sltsl_n_i    when sw_i(0) = '1' else '1';
-	sltsl_rom_n_s	<= slt_exp_n(0) when sw_i(0) = '1' else sltsl_n_i;
-	sltsl_ram_n_s	<= slt_exp_n(1) when sw_i(0) = '1' else '1';
+--	sltsl_c			<= sltsl_n_i    when sw_i(0) = '1' else '1';
+--	sltsl_rom_n_s	<= slt_exp_n(0) when sw_i(0) = '1' else sltsl_n_i;
+--	sltsl_ram_n_s	<= slt_exp_n(1) when sw_i(0) = '1' else '1';
+	sltsl_c			<= sltsl_n_i;
+	sltsl_rom_n_s	<= slt_exp_n(0) when sw_i(0) = '1' else slt_exp_n(1);
+	sltsl_ram_n_s	<= slt_exp_n(1) when sw_i(0) = '1' else slt_exp_n(0);
 
 	iomapper_s	<= '1' when io_cs = '1' and addr_bus_i(7 downto 2) = "111111"				else '0';	-- Acesso I/O portas $FC a $FF
 
