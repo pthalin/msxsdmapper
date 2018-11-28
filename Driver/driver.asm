@@ -15,17 +15,17 @@
 ; 7F00h		: Interface status and card select register (read/write)
 ;	<read>
 ;	If no SD card is selected:
-;	b7-b2 : always 0
-;	b1 : SW1 status (Driver selection)
-;	b0 : SW0 status. 0=RAM disabled, 1=RAM enabled
+;	    b7-b2 : always 0
+;	    b1 : SW1 status (Driver selection)
+;	    b0 : SW0 status. 0=RAM disabled, 1=RAM enabled
 ;	If any SD card is selected:
-;	b7-b3 : always 0
-;	b2 : 1=Write protecton enabled for SD card slot selected
-;	b1 : 0=SD card present on slot selected
-;	b0 : 1=SD Card on slot selected changed since last read
+;	    b7-b3 : always 0
+;	    b2 : 1=Write protecton enabled for SD card-slot selected
+;	    b1 : 0=SD card present in the selected card-slot
+;	    b0 : 1=SD Card on slot selected changed since last read
 ;	<write>
-;	b0	: SD card slot-0 chip-select (1=selected)
-;	b1	: SD card slot-1 chip-select (1=selected)
+;	    b0 : SD card slot-0 chip-select (1=selected)
+;	    b1 : SD card slot-1 chip-select (1=selected)
 
 ; 7F02h		: 8-bit timer (97.65625 KHz frequency, 10.24uS resolution) (read/write)
 ; When a value is written, the timer will decrease it until it reaches zero
@@ -37,6 +37,10 @@
 ; Driver configuration constants
 ;
 
+; DEFINE HASMEGARAM	; Driver for an SD-Mapper with MegaRAM
+; DEFINE TURBOINIT	; Disable for the interfaces with the CPLD firmware turbo bug 
+; DEFINE DEBUG		; Set for debugging output
+
 ;Driver type:
 ;   0 for drive-based
 ;   1 for device-based
@@ -47,15 +51,14 @@ DRV_TYPE	equ	1
 ;   0 for no hot-plug support
 ;   1 for hot-plug support
 
-DRV_HOTPLUG	equ	0
+DRV_HOTPLUG	equ	1
 
-DEBUG	equ	0	;Set to 1 for debugging, 0 to normal operation
 
 ;Driver version
 
 VER_MAIN	equ	1
 VER_SEC		equ	0
-VER_REV		equ	8
+VER_REV		equ	10
 
 ;-----------------------------------------------------------------------------
 ; SPI addresses. Check the Technical info above for the bit contents
@@ -114,6 +117,8 @@ TRLDIR		ds 8	; R800 data transfer helper
 ;-----------------------------------------------------------------------------
 ;
 ; Standard BIOS and work area entries
+CALSLT	= $001C		; Call routine in any slot
+CALLF	= $0030		; Call routine in any slot
 INITXT	= $006C		; Inicializa SCREEN0
 CHSNS	= $009C		; Sense keyboard buffer for character
 CHGET	= $009F		; Get character from keyboard buffer
@@ -123,8 +128,8 @@ ERAFNK	= $00CC		; Erase function key display
 SNSMAT	= $0141		; Read row of keyboard matrix
 KILBUF	= $0156		; Clear keyboard buffer
 EXTROM	= $015F
-CHGCPU	= #0180
-GETCPU	= #0183
+CHGCPU	= $0180		; Change the turbo mode
+GETCPU	= $0183		; Get the turbo mode
 
 ; subROM functions
 SDFSCR	= $0185
@@ -137,6 +142,7 @@ LINL40	= $F3AE		; Width
 LINLEN	= $F3B0
 INTFLG	= $FC9B
 SCRMOD	= $FCAF
+EXPTBL	 =$FCC1
 
 
 ;-----------------------------------------------------------------------------
@@ -176,6 +182,24 @@ ESEEK	equ	0F3h
 EIFORM	equ	0F0h
 EIDEVL	equ	0B5h
 EIPARM	equ	08Bh
+
+;-----------------------------------------------------------------------------
+;
+; Macros
+;
+
+ MACRO BYTE2STR value
+
+ IF value > 99
+	db	((value / 100) % 10)+$30
+ ENDIF
+ IF value > 9
+	db	((value / 10) % 10)+$30
+ ENDIF
+	db	(value % 10)+$30
+
+ ENDM
+
 
 ;-----------------------------------------------------------------------------
 ;
@@ -291,6 +315,7 @@ SING_DBL  equ     7820h ;"1-Single side / 2-Double side"
 ;
 ; Driver name
 ;
+; It will be shown in the FDISK interface selection menu
 
 DRV_NAME:
 	db	"FBLabs SDHC"
@@ -387,8 +412,17 @@ DRV_INIT:
 
 .call2:
 ; 2nd call: 
+ IFDEF TURBOINIT
+	ld	a,(CHGCPU)
+	cp	#C3		; IS CHGCPU present?
+	jr	nz,.call2ini
+	call	GETCPU
+	push	af		; Save the current CPU
+	ld	a,#82
+	call	CHGCPU		; Enable the turbo
 .call2ini:
-       	call	MYSETSCR		; Set the screen mode
+ ENDIF ; TURBOINIT
+	call	MYSETSCR		; Set the screen mode
 	call	pegaWorkArea		; HL=IY=Work area pointer
 
 	ld	de,strTitle		; prints the title 
@@ -412,7 +446,31 @@ DRV_INIT:
 	call	INICHKSTOP		; Check if the STOP key was pressed
 
 	ld	de, strCrLf
-	jp	printString
+ 
+	call	printString
+ IFDEF TURBOINIT
+.drv_init_end:
+	; ***Workaround for a bug in Nextor that causes it to freeze if
+	; CTRL+STOP was pressed on boot
+	ld	a,(INTFLG)
+	cp	3		; Is CTRL+STOP still signaled?
+	jr	nz,.restCPU	; no, skip
+	xor	a
+	ld	(INTFLG),a	; Clear CTRL+STOP otherwise Nextor will freeze
+
+.restCPU:	; Restore the CPU if necessary
+	ld	a,(CHGCPU)
+	cp	#C3		; IS CHGCPU present?
+	ret	nz
+	pop	af
+	or	#80
+	jp	CHGCPU
+ ELSE
+	ret
+ ENDIF ; TURBOINIT
+
+
+;------- DRV_INIT aux routines ----------
 
 .detecta:
 	ld	(iy+WRKAREA.NUMSD), a	; Save the requested card slot
@@ -476,14 +534,29 @@ DRV_INIT:
 	ld	a, (SPISTATUS)		; Check if the mapper/megaRAM is active
 	and	IF_M_RAM		; Is the RAM enabled?
 	ld	de,strMr_mp_desativada
+ IFDEF HASMEGARAM
 	jr	z,.print		; No, skip
 	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
 	and	IF_M_DRVER
-	ld	de,strDrvMain
+	ld	de,strMapper
 	jr	nz,.print
-	ld	de, strDrvDev
+	ld	de, strMegaram		; Megaram ativa
 .print:
 	jp	printString
+ ELSE
+	call	z,printString		; Yes, print
+	ld	a, (SPISTATUS)		; Get the MainBIOS/DevBIOS switch status
+	and	IF_M_DRVER
+	ld	de,strDrvMain
+	jr	nz,.printdrv
+	ld	de, strDrvDev
+.printdrv:
+	jp	printString
+ ENDIF
+
+
+
+
 
 ;-----------------------------------------------------------------------------
 ;
@@ -587,7 +660,7 @@ DEV_RW:
 	ld	(iy+WRKAREA.NUMBLOCKS),b	; save the number of blocks to transfer 
 	call	setaSDAtual
 	ld	a,(SPISTATUS)	; Get this card slot status
-	and	SD_M_PRESENT	; Is ther a card present?
+	and	SD_M_PRESENT	; Is there a card present?
 	jr	z,.cardok	; Yes, skip
 	pop	af
 	ld	a, ENRDY	; Not ready
@@ -601,6 +674,8 @@ DEV_RW:
 .cardok:
 ;	exx
 	push	de,hl
+
+	call	SETLDIRHLPR	; hl'=Pointer to LDIR helper in RAM
 	call	calculaCIDoffset	; ix=CID offset 
 	ld	a,(ix+15)	; verificar se eh SDV1 ou SDV2
 	ld	ixl,a		; ixl=SDcard version
@@ -608,8 +683,9 @@ DEV_RW:
 	pop	af		; a=Device number, f=read/write flag 
 ;	exx			; hl=Source/dest Address, de=Pointer to sect#
 ;	ld	ixh, b 		; ixh=Number of blocks to transfer
-	jr	c,escrita	; Skip if it's a write operation 
-leitura:
+	jr	c,DEV_W	; Skip if it's a write operation 
+
+DEV_R:
 	ld	a, (de)		; 1. n. bloco
 	push	af
 	inc	de
@@ -627,17 +703,15 @@ leitura:
 	pop	af		; HL = ponteiro destino
 	ld	e, a		; BC DE = 32 bits numero do bloco
 	call	LerBloco	; chamar rotina de leitura de dados
-	jr	nc,.ok
-	call	marcaErroCartao		; ocorreu erro na leitura, marcar erro
-;	ld	a, ENRDY	; Not ready
+	ret	nc		; Return with A=0 if no error occurred
+	call	marcaErroCartao		; ocorreu erro, marcar nas flags
+	ld	a,(iy+WRKAREA.NUMBLOCKS) ; Get the number of requested blocks
+	sub	ixh		; subtract the number of remaining blocks
+	ld	b,a		; b=number of blocks written
 	ld	a, EDISK	; General unknown disk error
-	ld	b, 0		; informar que lemos 0 blocos
-	ret
-.ok:
-	xor	a		; tudo OK, informar ao Nextor
 	ret
 
-escrita:
+DEV_W:
 	; Test if the card is write protected
 	ld	a,(SPISTATUS)	; Get this card slot status
 	and	SD_M_WRTPROT	; Is the card write protected?
@@ -663,15 +737,13 @@ escrita:
 	pop	af		; HL = ponteiro destino
 	ld	e, a		; BC DE = 32 bits numero do bloco
 	call	GravarBloco	; chamar rotina de gravacao de dados
-	jr	nc,.ok2
-;	call	marcaErroCartao		; ocorreu erro, marcar nas flags
+	ret	nc		; Return with A=0 if no error occurred
+
+	call	marcaErroCartao		; ocorreu erro, marcar nas flags
 	ld	a,(iy+WRKAREA.NUMBLOCKS) ; Get the number of requested blocks
 	sub	ixh		; subtract the number of remaining blocks
 	ld	b,a		; b=number of blocks written
 	ld	a,EWRERR	; Write error
-	ret
-.ok2:
-	xor	a			; gravacao sem erros!
 	ret
 
 ;-----------------------------------------------------------------------------
@@ -843,43 +915,86 @@ DEV_INFO:
 ; DEV_STATUS itself. Please read the Driver Developer Guide for more info.
 
 DEV_STATUS:
-	cp	a,3		; 2 dispositivos somente
-	jr	nc,.saicomerro
-	dec	b		; 1 logical unit somente
-	jr	nz,.saicomerro
-
+	ld	c,a		; c=Device number
+	cp	3		; 2 dispositivos somente
+	jr	nc,.nodev
+	ld	a,b
+	or	a		; Device itself status?
+	jr	z,.devok	; I'm fine, thanks
+	dec	a		; Only LUN=1 are allowed
+	jr	nz,.nodev
+ IFDEF DEBUG
 	push	af
-	call	pegaWorkArea	; HL=IY=Work area pointer
+	ld	a,'S'
+	call	PRTCHAR
 	pop	af
-	ld	(iy+WRKAREA.NUMSD),a	; salva numero do device atual (1 ou 2)
-	ld	c, a
+ ENDIF
+	push	bc
+	ld	a,c
+	call	pegaWorkArea	; HL=IY=Work area pointer
+	pop	bc
+	ld	(iy+WRKAREA.NUMSD),c	; salva numero do device atual (1 ou 2)
+	ld	a,c
 	ld	(SPICTRL), a	; selects SD
-	ld	a, (SPISTATUS)	; testar se cartao esta inserido
+	ld	a, (SPISTATUS)	; Get this card-slot status
 	call	disableSDs
-	and	$02
-	jr	nz,.cartaoComErro	; se slot do cartao estiver vazio, marcamos o erro nas flags
+	bit	SD_PRESENT,a	; Any card here?
+	jr	nz,.saicomerro	; Report that there's no card here
+	and	SD_M_DSKCHG	; Has the card changed since last time?
+	jr	nz,.detcard	; Yes, force a detection
+.tsterror:
 	ld	a, (iy+WRKAREA.CARDFLAGS)	; testar bit de erro do cartao nas flags
-	and	c
+	and	c		; Test against the card #
 	jr	z,.semMudanca	; cartao nao marcado com erro, pula
+.detcard:
 	call	detectaCartao	; erro na deteccao do cartao, tentar re-detectar
 	jr	c,.cartaoComErro	; nao conseguimos detectar, sai com erro
 	ld	a, (iy+WRKAREA.NUMSD)		; conseguimos detectar, tira erro nas flags
 	cpl			; inverte bits para fazer o AND
 	ld	c, a
 	ld	a, (iy+WRKAREA.CARDFLAGS)
-	and	c			; limpa bit
+	and	c		; clear the error bit 
 	ld	(iy+WRKAREA.CARDFLAGS), a
 .comMudanca:
+ IFDEF DEBUG
+	ld	a,'2'
+	call	PRTCHAR
+ ENDIF
 	ld	a, 2		; informa ao Nextor que cartao esta OK e mudou
 	ret
 .semMudanca:
+ IFDEF DEBUG
+	ld	a,'1'
+	call	PRTCHAR
+ ENDIF
 	ld	a, 1		; informa ao Nextor que cartao esta OK e nao mudou
 	ret
 .cartaoComErro:
 	call	marcaErroCartao	; marcar erro do cartao nas flags
-.saicomerro:
-	ld	a, 0		; informa erro
+ IFDEF DEBUG
+	ld	a,'E'
+	call	PRTCHAR
+	xor	a
 	ret
+ ENDIF
+.nodev:
+ IFDEF DEBUG
+	ld	a,'s'
+	call	PRTCHAR
+	xor	a
+	ret
+ ENDIF
+.saicomerro:
+ IFDEF DEBUG
+	ld	a,'0'
+	call	PRTCHAR
+ ENDIF
+	xor	a		; this device has an error 
+	ret
+.devok:
+	ld	a,3
+	ret
+
 
 ;-----------------------------------------------------------------------------
 ;
@@ -1556,15 +1671,29 @@ setaSDAtual:
 ; Modifies:  AF, BC, DE, HL, IXL
 ; ------------------------------------------------
 GravarBloco:
-	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
+ IFDEF DEBUG
+	push	af
+	ld	a,'G'
+	call	PRTCHAR
+	pop	af
+ ENDIF
+;	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
+	ld	a,ixl
 	or	a
 	call	z,blocoParaByte		; se for SDV1 coverter blocos para bytes
 ;	call	setaSDAtual	; selecionar cartao atual
-	ld	a, (iy+WRKAREA.NUMBLOCKS)	; testar se Nextor quer gravar 1 ou mais blocos
+	ld	a, (iy+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
+	ld	ixh,a		; ixh=Number of blocks
 	dec	a
 	jp	z,.umBloco	; somente um bloco, gravar usando CMD24
 
 ; multiplos blocos
+ IFDEF DEBUG
+	push	af
+	ld	a,'M'
+	call	PRTCHAR
+	pop	af
+ ENDIF
 	push	bc
 	push	de
 	ld	a, CMD55	; Multiplos blocos, mandar ACMD23 com total de blocos
@@ -1577,23 +1706,27 @@ GravarBloco:
 	pop	de
 	pop	bc
 	jp	c,terminaLeituraEscritaBloco	; erro no ACMD23
+ IFDEF DEBUG
+	call	PRTDOT
+ ENDIF
 	ld	a, CMD25	; comando CMD25 = write multiple blocks
 	call	SD_SEND_CMD_GET_ERROR
 	jp	c,terminaLeituraEscritaBloco	; erro
+ IFDEF DEBUG
+	call	PRTDOT
+ ENDIF
 .loop:
+ IFDEF DEBUG
+	call	PRTDASH
+ ENDIF
 	ld	a, $FC		; mandar $FC para indicar que os proximos dados sao
 	ld	(SPIDATA),a	; dados para gravacao
-	; Check for a Z80 or R800
-	ex	de,hl
-;	or 	a		; Clear Cy
-	ld	a,20
-	db	#ED,#F9		; mulub a,a
-	ex	de,hl
-	ld	de, SPIDATA
-	jp	c,.r800m	; Use LDIR for R800
-	.512	ldi		; 512 vezes o opcode LDI
-.part2m:
-	ld	a, $FF		; envia dummy CRC
+
+	ld	de,SPIDATA
+	call	RUN_HLPR
+
+;	ld	de,$FFFF	; envia dummy CRC
+;	ld	(SPIDATA),de
 	ld	(SPIDATA),a
 	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
@@ -1603,48 +1736,42 @@ GravarBloco:
 	jp	nz,terminaLeituraEscritaBloco	; resposta errada, informar erro
 	call	WAIT_RESP_NO_00	; esperar cartao
 	jp	c,terminaLeituraEscritaBloco
-	ld	a, (iy+WRKAREA.NUMBLOCKS)	; testar se tem mais blocos para gravar
-	dec	a
-	ld	(iy+WRKAREA.NUMBLOCKS), a
+	dec	ixh		; Next block
 	jp	nz,.loop
-	ld	a, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
+
+;	ld	hl, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
+	ld	a, (SPIDATA)
 	ld	a, (SPIDATA)
 	ld	a, $FD		; enviar $FD para informar ao cartao que acabou os dados
 	ld	(SPIDATA),a
-	ld	a, (SPIDATA)	; dummy reads
+;	ld	hl,(SPIDATA)	; 2 dummy reads
+	ld	a, (SPIDATA)
 	ld	a, (SPIDATA)
 	call	WAIT_RESP_NO_00	; esperar cartao
 	jp	.fim		; CMD25 concluido, sair informando nenhum erro
 
-.r800m:	ld	bc,512
-	ldir
-	jr	.part2m
-
-.r800s:	ld	bc,512
-	ldir
-	jp	.part2s
-
 .umBloco:
+ IFDEF DEBUG
+	push	af
+	ld	a,'S'
+	call	PRTCHAR
+	pop	af
+ ENDIF
 	ld	a, CMD24	; gravar somente um bloco com comando CMD24 = Write Single Block
 	call	SD_SEND_CMD_GET_ERROR
 	jp	c,terminaLeituraEscritaBloco	; erro
 
+ IFDEF DEBUG
+	call	PRTDOT
+ ENDIF
 	ld	a, $FE		; mandar $FE para indicar que vamos mandar dados para gravacao
 	ld	(SPIDATA),a
 
-	; Check for a Z80 or R800
-	ex	de,hl
-;	or 	a		; Clear Cy
-	ld	a,20
-	db	#ED,#F9		; mulub a,a
-	ex	de,hl
-	ld	de, SPIDATA
-	jr	c,.r800s	; Use LDIR for R800
-	.512	ldi
-.part2s:
-	ld	bc,512
-	ldir
-	ld	a, $FF		; envia dummy CRC
+	ld	de,SPIDATA
+	call	RUN_HLPR
+
+;	ld	de,$FFFF	; envia dummy CRC
+;	ld	(SPIDATA),de
 	ld	(SPIDATA),a
 	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
@@ -1674,54 +1801,37 @@ terminaLeituraEscritaBloco:
 ; Destroi AF, BC, DE, HL, IXL
 ; ------------------------------------------------
 LerBloco:
-	ld	a,(iy+WRKAREA.NUMBLOCKS)	; save the number of blocks to transfer 
-	ld	ixh,a		; ixh=Number of blocks
 ;	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
 	ld	a,ixl
 	or	a
 	call	z,blocoParaByte	; se for SDV1 coverter blocos para bytes
 ;	call	setaSDAtual
 
-
-
-	ld	a, (iy+WRKAREA.NUMBLOCKS)	; testar se Nextor quer ler um ou mais blocos
+	ld	a, (iy+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
+	ld	ixh,a		; ixh=Number of blocks
 	dec	a
-	jp	z,.umBloco	; somente um bloco, pular
+	jp	z,.umBloco	; only one block
 
 ; multiplos blocos
 	ld	a, CMD18	; ler multiplos blocos com CMD18 = Read Multiple Blocks
 	call	SD_SEND_CMD_GET_ERROR
 	jp	c,terminaLeituraEscritaBloco
+	ex	de,hl		; de=Destination address
 .loop:
 	call	WAIT_RESP_FE
 	jp	c,terminaLeituraEscritaBloco
-	ex	de,hl
-	; Check for a Z80 or R800
-;	or 	a		; Clear Cy
-	ld	a,20
-	db	#ED,#F9		; mulub a,a
+
 	ld	hl, SPIDATA
-	jp	c,.r800m	; Use LDIR for R800
-	.512	ldi
-.part2m:
-	ex	de,hl
-	ld	a, (SPIDATA)	; descarta CRC
+	call	RUN_HLPR
+
+;	ld	hl, (SPIDATA)	; descarta CRC
 	ld	a, (SPIDATA)
-	ld	a, (iy+WRKAREA.NUMBLOCKS)	; testar se tem mais blocos para ler
-	dec	a
-	ld	(iy+WRKAREA.NUMBLOCKS), a
+	ld	a, (SPIDATA)
+	dec	ixh
 	jp	nz,.loop
 	ld	a, CMD12	; acabou os blocos, mandar CMD12 para cancelar leitura
 	call	SD_SEND_CMD_NO_ARGS
 	jp	.fim
-
-.r800m: ld	bc,512
-	ldir
-	jr	.part2m
-
-.r800s:	ld	bc,512
-	ldir
-	jp	.part2s
 
 .umBloco:
 	ld	a, CMD17	; ler somente um bloco com CMD17 = Read Single Block
@@ -1732,16 +1842,12 @@ LerBloco:
 	jp	c,terminaLeituraEscritaBloco
 	ex	de,hl
 
-	; Check for a Z80 or R800
-;	or 	a		; Clear Cy
-	ld	a,20
-	db	#ED,#F9		; mulub a,a
 	ld	hl, SPIDATA
-	jr	c,.r800s	; Use LDIR for R800
-	.512	ldi
-.part2s:
-	ex	de,hl
-	ld	a, (SPIDATA)	; descarta CRC
+	call	RUN_HLPR
+
+;	ld	hl, (SPIDATA)	; descarta CRC
+	ld	a, (SPIDATA)
+	ld	a, (SPIDATA)
 .fim:
 	xor	a		; zera carry para informar leitura sem erros
 	jp	terminaLeituraEscritaBloco
@@ -2053,6 +2159,7 @@ INSTR800HLP:
 	cp	3		; MSX Turbo-R?
 	ret	c		; No, return
 	call	GTR800LDIR
+	exx
 	ex	de,hl
 	ld	hl,R800DATHLP
 	ld	bc,R800DATHLP.end-R800DATHLP
@@ -2060,20 +2167,7 @@ INSTR800HLP:
 	ret
 
 ; ------------------------------------------------
-; Obtain the pointer to the R800 data transfer helper routine
-; Input   : IY=Pointer to the WorkArea
-; Output  : HL=pointer to R800 data transfer helper routine 
-; Modifies: DE
-; ------------------------------------------------
-GTR800LDIR:
-	push	iy
-	pop	hl			; hl=WorkArea
-	ld	de,WRKAREA.TRLDIR
-	add	hl,de
-	ret
-
-; ------------------------------------------------
-; R800 data transfer routine, copied to the WorkArea
+; R800 optimized data transfer routine, copied to the WorkArea
 ; ------------------------------------------------
 R800DATHLP:
 	exx
@@ -2082,15 +2176,100 @@ R800DATHLP:
 	ret
 .end:
 
+; ------------------------------------------------
+; Z80 optimized data transfer routine, kept in ROM 
+; ------------------------------------------------
+LDI512:	; Z80 optimized 512 byte transfer
+	exx
+	.512	ldi
+	ret
+
+; ------------------------------------------------
+; Jumps to a helper routine, usually in RAM
+; Input: HL': Address of the target routine
+; ------------------------------------------------
+RUN_HLPR:
+	exx
+	jp	(hl)
+
+; ------------------------------------------------
+; Setup the arbitrary block size LDIR helper to be used
+; Input   : none
+; Output  : HL': Address of the block transfer routine to be used 
+; Modifies: AF, DE', HL'
+; ------------------------------------------------
+SETLDIRHLPR:
+	exx
+	; Check for a Z80 or R800
+	xor	a		; Clear Cy
+	dec	a		; A=#FF
+	db	#ED,#F9		; mulub a,a
+	jr	c,.useLDIR	; Always use LDIR in RAM for the R800
+
+	ld	hl,LDI512
+	exx
+	ret
+
+.useLDIR:
+	exx
+	; ***Continues on GTR800LDIR
+
+; ------------------------------------------------
+; Obtain the pointer to the R800 data transfer helper routine
+; Input   : IY=Pointer to the WorkArea
+; Output  : HL=pointer to R800 data transfer helper routine 
+; Modifies: DE
+;	    - Does an exx at the end
+; ------------------------------------------------
+GTR800LDIR:
+	push	iy
+	pop	hl			; hl=WorkArea
+	ld	de,WRKAREA.TRLDIR
+	add	hl,de
+	exx
+	ret
+
+
+; ------------------------------------------------
+; Debugging routines
+; ------------------------------------------------
+ IFDEF DEBUG
+PRTCHAR:
+	push	ix,iy
+	ld	ix,CHPUT
+	ld	iy,(EXPTBL-1)
+	call	CALSLT
+	pop	iy,ix
+	ret
+PRTDOT:
+	push	af
+	ld	a,'.'
+	call	PRTCHAR
+	pop	af
+	ret
+PRTDASH:
+	push	af
+	ld	a,'-'
+	call	PRTCHAR
+	pop	af
+	ret
+ ENDIF
+
+
 
 ; ==========================================================================
 strTitle:
-	db	13,"FBLabs SDHC driver ",27,'J'
-	db	"v",VER_MAIN+$30,'.',VER_SEC+$30,'.',VER_REV+$30
+	db	13,"FBLabs SDHC driver v",27,'J'
+	BYTE2STR VER_MAIN
+	db	'.'
+	BYTE2STR VER_SEC
+	db	'.'
+	BYTE2STR VER_REV
 	db	13,10,0
 
+;		 |-------------39 chars----------------|
 strBootpaused:
-	db	"Paused. Press <i> to show the copyright info.",13,10,0
+	db	"Paused. Press <i> for the copyright info",13,10,0
 
 strCopyright:
 	db	"(c) 2014 Fabio Belavenuto",13,10
@@ -2098,26 +2277,33 @@ strCopyright:
 	db	"Licenced under CERN OHL v1.1",13,10
 	db	"http://ohwr.org/cernohl",13,10
 	db	"PCB designed by Luciano Sturaro",13,10
-	; fall throw
+	; will use the CR+LF+EOS bellow 
 strCrLf:
 	db	13,10,0
 strCartao:
-	db	"Slot ",0
+	db	"- Slot ",0
 strVazio:
 	db	"Empty",13,10,0
 strNaoIdentificado:
 	db	"Unknown!",13,10,0
-			;----------------------------------------
+;		 |-------------39 chars----------------|
 strMr_mp_desativada:
-	db	"Slot expander/Mapper/MegaRAM disabled",13,10,0
+	db	"- Slot expander & Mem Mapper disabled",13,10,0
+ IFDEF HASMEGARAM
+strMapper:
+	db	"- Slot expander & Mem Mapper enabled",13,10,0
+strMegaram:
+	db	"- Slot expander & MegaRAM enabled",13,10,0
+ ELSE
 strDrvMain:
-	db	"Driver main selected",13,10,0
+	db	"- Main driver selected",13,10,0
 strDrvDev:
-	db	"Driver development selected",13,10,0
+	db	"- Development driver selected",13,10,0
+ ENDIF
 strSDV1:
-	db	"SDV1 - ",0
+	db	"SDV1, ",0
 strSDV2:
-	db	"SDV2 - ",0
+	db	"SDV2, ",0
 
 ;-----------------------------------------------------------------------------
 ;
