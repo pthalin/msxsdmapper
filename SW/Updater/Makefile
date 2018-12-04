@@ -17,21 +17,23 @@
 
 CP = cp
 RM = rm -f
+MD = mkdir
 CC = sdcc
 AS = sdasz80
 LD = sdcc
 H2B = hex2bin
 
 SDIR = src
-IDIR = inc
+LDIR = ../../msxclib/lib
+IDIR = ../../msxclib/inc
 ODIR = obj
 
-CFLAGS = -mz80 --opt-code-size --fomit-frame-pointer -I$(IDIR) -I..
-#CFLAGS = -mz80 -I$(IDIR) -I..
+CFLAGS = -mz80 --opt-code-size --fomit-frame-pointer -I$(IDIR) -Iinc -I..
+AFLAGS = -Iinc -I..
 LDFLAGS = -mz80 --code-loc 0x0180 --data-loc 0 --no-std-crt0
 
-_OBJS1 = crt0.rel main.rel sdhc.rel bios.rel msxdos.rel getchar.rel putchar.rel conio.rel mem.rel mapper.rel strings.rel
-OBJS1 = $(patsubst %,$(ODIR)/%,$(_OBJS1))
+_OBJS = crt0.rel bios.rel msxdos.rel getchar.rel putchar.rel conio.rel mem.rel mapper.rel strings.rel sdhc.rel main.rel
+OBJS = $(patsubst %,$(ODIR)/%,$(_OBJS))
 
 program1 = FBL-UPD
 
@@ -39,8 +41,8 @@ all: dir $(program1).COM
 
 $(program1).COM: $(program1).ihx
 
-$(program1).ihx: $(OBJS1)
-	$(LD) $(LDFLAGS) -o $@ $(OBJS1)
+$(program1).ihx: $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
 .PHONY: clean dir
 
@@ -48,12 +50,18 @@ clean:
 	$(RM) $(ODIR)/* *.map *.lk *.noi *.com *.ihx
 
 dir:
-	if not exist obj mkdir obj
+	-$(MD) $(ODIR)
 
 $(ODIR)/%.rel: $(SDIR)/%.S
-	$(AS) -o $@ $<
+	$(AS) $(AFLAGS) -o $@ $<
 
 $(ODIR)/%.rel: $(SDIR)/%.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(ODIR)/%.rel: $(LDIR)/%.S
+	$(AS) $(AFLAGS) -o $@ $<
+
+$(ODIR)/%.rel: $(LDIR)/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.COM: %.ihx
