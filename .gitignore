@@ -43,3 +43,9 @@
 /CPLD/xlnx_auto_0_xdb
 /CPLD/xst/work
 /Updater/NEW/obj
+/CPLD/src/tb_spi/transcript
+/CPLD/src/tb_spi/vsim.wlf
+/CPLD/src/tb_spi/work
+/CPLD/src/tb_spi2/transcript
+/CPLD/src/tb_spi2/vsim.wlf
+/CPLD/src/tb_spi2/work
