@@ -50,7 +50,7 @@ end tb;
 architecture testbench of tb is
 
 	-- test target
-	component spi
+	component spi2
 	port(
 		clock_i			: in    std_logic;
 		reset_n_i		: in    std_logic;
@@ -173,7 +173,7 @@ begin
 
 
 	-- Instance
-	u_target: spi
+	u_target: spi2
 	port map (
 		clock_i		=> clock_s,
 		reset_n_i	=> reset_n_s,

@@ -73,6 +73,7 @@ architecture rtl of spi2 is
 	signal last_wr_n_q	: std_logic_vector( 1 downto 0)	:= (others => '0');
 	signal last_data_q	: std_logic_vector( 7 downto 0);
 	signal wait_n_s		: std_logic;
+	signal wait_cnt_q		: unsigned( 3 downto 0)	:= (others => '0');
 
 begin
 
@@ -110,6 +111,7 @@ begin
 			port_r		<= (others => '1');
 			counter_s	<= "1111"; -- Idle
 			wait_n_s		<= '1';
+			wait_cnt_q	<= (others => '0');
 
 		elsif rising_edge(clock_i) then
 
@@ -119,7 +121,11 @@ begin
 			if counter_s = "1111" then
 				port_r		<= shift_r(7 downto 0);		-- Store previous shift register value in input register
 				shift_r(8)	<= '1';							-- MOSI repousa em '1'
-				wait_n_s		<= '1';
+				if wait_cnt_q /= 0 then
+					wait_cnt_q	<= wait_cnt_q - 1;
+				else
+					wait_n_s		<= '1';
+				end if;
 
 				-- Idle - check for a bus access
 				if edge_det_s = "10"  then
@@ -143,6 +149,7 @@ begin
 				if edge_det_s = "01" then
 					wait_n_s	<= '0';
 				end if;
+				wait_cnt_q	<= (others => '1');
 			end if;
 
 			-- Delay signals

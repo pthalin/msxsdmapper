@@ -424,7 +424,7 @@
 0424   417F~            	call	CHGCPU		; Enable the turbo
 0425   417F~            .call2ini: 
 0426   417F              ENDIF ; TURBOINIT
-0427   417F CD BB 48    	call	MYSETSCR		; Set the screen mode
+0427   417F CD B8 48    	call	MYSETSCR		; Set the screen mode
 0428   4182 CD 20 44    	call	pegaWorkArea		; IY=Work area pointer
 0429   4185             
 0430   4185             ;	; Clear the work area
@@ -436,8 +436,8 @@
 0436   418E 36 00       	ld	(hl),0
 0437   4190 ED B0       	ldir
 0438   4192             
-0439   4192 11 83 4D    	ld	de,strTitle		; prints the title 
-0440   4195 CD 74 47    	call	printString
+0439   4192 11 80 4D    	ld	de,strTitle		; prints the title 
+0440   4195 CD 71 47    	call	printString
 0441   4198             
 0442   4198             
 0443   4198             .sdhcinit: 	; FBLabs SDHC Interface initialization
@@ -452,13 +452,13 @@
 0452   41A9 01 00 00    	ld	bc, 0
 0453   41AC 1E 05       	ld	e, 5
 0454   41AE             
-0455   41AE CD 4E 49    	call	INSTR800HLP		; Install R800 data copy on workarea
+0455   41AE CD 4B 49    	call	INSTR800HLP		; Install R800 data copy on workarea
 0456   41B1             
-0457   41B1 CD FF 48    	call	INICHKSTOP		; Check if the STOP key was pressed
+0457   41B1 CD FC 48    	call	INICHKSTOP		; Check if the STOP key was pressed
 0458   41B4             
-0459   41B4 11 4F 4E    	ld	de, strCrLf
+0459   41B4 11 4C 4E    	ld	de, strCrLf
 0460   41B7              
-0461   41B7 CD 74 47    	call	printString
+0461   41B7 CD 71 47    	call	printString
 0462   41BA              IFDEF TURBOINIT
 0463   41BA~            .drv_init_end: 
 0464   41BA~            	; ***Workaround for a bug in Nextor that causes it to freeze if
@@ -484,8 +484,8 @@
 0485   41BB             
 0486   41BB             .detecta: 
 0487   41BB FD 77 30    	ld	(iy+WRKAREA.NUMSD), a	; Save the requested card slot
-0488   41BE 11 52 4E    	ld	de, strCartao
-0489   41C1 CD 74 47    	call	printString
+0488   41BE 11 4F 4E    	ld	de, strCartao
+0489   41C1 CD 71 47    	call	printString
 0490   41C4 FD 4E 30    	ld	c, (iy+WRKAREA.NUMSD)
 0491   41C7 79          	ld	a,c
 0492   41C8 C6 30       	add	'0'
@@ -502,40 +502,40 @@
 0503   41DE CD C4 45    	call	disableSDs
 0504   41E1 E6 02       	and	SD_M_PRESENT		; Is there an card present?
 0505   41E3 28 06       	jr	z,.naoVazio		; Yes, skip
-0506   41E5 11 5A 4E    	ld	de, strVazio		; Empty SD card slot message
-0507   41E8 C3 74 47    	jp	printString
+0506   41E5 11 57 4E    	ld	de, strVazio		; Empty SD card slot message
+0507   41E8 C3 71 47    	jp	printString
 0508   41EB             ;	jp	.marcaErro
 0509   41EB             .naoVazio: 
 0510   41EB CD 77 44    	call	detectaCartao		; tem cartao no slot, inicializar e detectar
 0511   41EE 30 09       	jr	nc,.detectou
 0512   41F0 CD C4 45    	call	disableSDs
-0513   41F3 11 62 4E    	ld	de, strNaoIdentificado
-0514   41F6 C3 74 47    	jp	printString
+0513   41F3 11 5F 4E    	ld	de, strNaoIdentificado
+0514   41F6 C3 71 47    	jp	printString
 0515   41F9             ;.marcaErro:
 0516   41F9             ;	jp	marcaErroCartao		; slot vazio ou erro de deteccao, marcar nas flags
 0517   41F9             .detectou: 
 0518   41F9 CD 4F 44    	call	calculaCIDoffset	; calculamos em IX a posicao correta do offset CID dependendo do cartao atual
 0519   41FC DD 7E 0F    	ld	a,(ix+15)	; pegar byte SDV1 ou SDV2
-0520   41FF 11 CE 4E    	ld	de, strSDV1	; e imprimir
+0520   41FF 11 CB 4E    	ld	de, strSDV1	; e imprimir
 0521   4202 B7          	or	a
 0522   4203 28 03       	jr	z,.pula1
-0523   4205 11 D5 4E    	ld	de, strSDV2
+0523   4205 11 D2 4E    	ld	de, strSDV2
 0524   4208             .pula1: 
-0525   4208 CD 74 47    	call	printString
+0525   4208 CD 71 47    	call	printString
 0526   420B 3E 28       	ld	a,'('
 0527   420D CD A2 00    	call	CHPUT
 0528   4210 DD 7E 00    	ld	a,(ix)		; pegar byte do fabricante
-0529   4213 CD C7 47    	call	printDecToAscii	; Imprimir Manufacturer ID
+0529   4213 CD C4 47    	call	printDecToAscii	; Imprimir Manufacturer ID
 0530   4216 3E 29       	ld	a,')'
 0531   4218 CD A2 00    	call	CHPUT
 0532   421B 3E 20       	ld	a,' '
 0533   421D CD A2 00    	call	CHPUT
 0534   4220 DD 7E 00    	ld	a,(ix)		; pegar byte do fabricante
-0535   4223 CD EE 47    	call	pegaFabricante	; achar nome do fabricante
+0535   4223 CD EB 47    	call	pegaFabricante	; achar nome do fabricante
 0536   4226 EB          	ex	de,hl
-0537   4227 CD 74 47    	call	printString	; e imprimir
-0538   422A 11 4F 4E    	ld	de,strCrLf
-0539   422D C3 74 47    	jp	printString
+0537   4227 CD 71 47    	call	printString	; e imprimir
+0538   422A 11 4C 4E    	ld	de,strCrLf
+0539   422D C3 71 47    	jp	printString
 0540   4230             
 0541   4230             
 0542   4230             .printmode: 		; Print the two switches configuration
@@ -543,7 +543,7 @@
 0544   4231 32 F0 7F    	ld	(SPICTRL),a
 0545   4234 3A F0 7F    	ld	a, (SPISTATUS)		; Check if the mapper/megaRAM is active
 0546   4237 E6 01       	and	IF_M_RAM		; Is the RAM enabled?
-0547   4239 11 6D 4E    	ld	de,strMr_mp_desativada
+0547   4239 11 6A 4E    	ld	de,strMr_mp_desativada
 0548   423C              IFDEF HASMEGARAM
 0549   423C~            	jr	z,.print		; No, skip
 0550   423C~            	ld	a, (SPISTATUS)		; ativa, testar se eh mapper ou megaram
@@ -554,14 +554,14 @@
 0555   423C~            .print: 
 0556   423C~            	jp	printString
 0557   423C              ELSE
-0558   423C CC 74 47    	call	z,printString		; Yes, print
+0558   423C CC 71 47    	call	z,printString		; Yes, print
 0559   423F 3A F0 7F    	ld	a, (SPISTATUS)		; Get the MainBIOS/DevBIOS switch status
 0560   4242 E6 02       	and	IF_M_DRVER
-0561   4244 11 95 4E    	ld	de,strDrvMain
+0561   4244 11 92 4E    	ld	de,strDrvMain
 0562   4247 20 03       	jr	nz,.printdrv
-0563   4249 11 AE 4E    	ld	de, strDrvDev
+0563   4249 11 AB 4E    	ld	de, strDrvDev
 0564   424C             .printdrv: 
-0565   424C C3 74 47    	jp	printString
+0565   424C C3 71 47    	jp	printString
 0566   424F              ENDIF
 0567   424F             
 0568   424F             
@@ -742,7 +742,7 @@
 0743   429B             ;	exx
 0744   429B D5 E5       	push	de,hl
 0745   429D             
-0746   429D CD 6D 4D    	call	SETLDIRHLPR	; hl'=Pointer to LDIR helper in RAM
+0746   429D CD 6A 4D    	call	SETLDIRHLPR	; hl'=Pointer to LDIR helper in RAM
 0747   42A0 CD 4F 44    	call	calculaCIDoffset	; ix=CID offset 
 0748   42A3 DD 7E 0F    	ld	a,(ix+15)	; verificar se eh SDV1 ou SDV2
 0749   42A6 DD 6F       	ld	ixl,a		; ixl=SDcard version
@@ -896,14 +896,14 @@
 0897   4333 36 28       	ld	(hl),'('	; Place "(xx) " on the buffer
 0898   4335 23          	inc	hl
 0899   4336 DD 7E 00    	ld	a, (ix)		; byte do fabricante
-0900   4339 CD 7D 47    	call	DecToAscii
+0900   4339 CD 7A 47    	call	DecToAscii
 0901   433C 36 29       	ld	(hl),')'
 0902   433E 23          	inc	hl
 0903   433F 36 20       	ld	(hl),' '
 0904   4341 23          	inc	hl
 0905   4342 DD 7E 00    	ld	a, (ix)		; byte do fabricante
 0906   4345 EB          	ex	de,hl
-0907   4346 CD EE 47    	call	pegaFabricante	; pegar nome do fabricante em HL
+0907   4346 CD EB 47    	call	pegaFabricante	; pegar nome do fabricante em HL
 0908   4349 ED B0       	ldir			; e colocar no buffer
 0909   434B AF          	xor	a		; Return with A=0 (Ok)
 0910   434C C9          	ret
@@ -945,7 +945,7 @@
 0946   4379 06 04       	ld	b, 4		; 4 bytes do serial
 0947   437B             .loop3: 
 0948   437B 7E          	ld	a,(hl)
-0949   437C CD B3 47    	call	HexToAscii	; converter HEXA para ASCII
+0949   437C CD B0 47    	call	HexToAscii	; converter HEXA para ASCII
 0950   437F 23          	inc	hl
 0951   4380 10 F9       	djnz	.loop3
 0952   4382 06 36       	ld	b, 54		; Coloca espaco no restante
@@ -1774,7 +1774,7 @@
 1761   4672             ;	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
 1762   4672 DD 7D       	ld	a,ixl
 1763   4674 B7          	or	a
-1764   4675 CC 68 47    	call	z,blocoParaByte		; se for SDV1 coverter blocos para bytes
+1764   4675 CC 65 47    	call	z,blocoParaByte		; se for SDV1 coverter blocos para bytes
 1765   4678             ;	call	setaSDAtual	; selecionar cartao atual
 1766   4678 FD 7E 32    	ld	a, (iy+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
 1767   467B DD 67       	ld	ixh,a		; ixh=Number of blocks
@@ -1817,7 +1817,7 @@
 1804   46A3 32 00 7B    	ld	(SPIDATA),a	; dados para gravacao
 1805   46A6             
 1806   46A6 11 00 7B    	ld	de,SPIDATA
-1807   46A9 CD 6B 4D    	call	RUN_HLPR
+1807   46A9 CD 68 4D    	call	RUN_HLPR
 1808   46AC             
 1809   46AC 3E FF       	ld	a,$FF		; envia dummy CRC
 1810   46AE 32 00 7B    	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
@@ -1859,7 +1859,7 @@
 1846   46EB 32 00 7B    	ld	(SPIDATA),a
 1847   46EE             
 1848   46EE 11 00 7B    	ld	de,SPIDATA
-1849   46F1 CD 6B 4D    	call	RUN_HLPR
+1849   46F1 CD 68 4D    	call	RUN_HLPR
 1850   46F4             
 1851   46F4 3E FF       	ld	a,$FF		; envia dummy CRC
 1852   46F6 32 00 7B    	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
@@ -1895,13 +1895,13 @@
 1882   4712             ;	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
 1883   4712 DD 7D       	ld	a,ixl
 1884   4714 B7          	or	a
-1885   4715 CC 68 47    	call	z,blocoParaByte	; se for SDV1 coverter blocos para bytes
+1885   4715 CC 65 47    	call	z,blocoParaByte	; se for SDV1 coverter blocos para bytes
 1886   4718             ;	call	setaSDAtual
 1887   4718             
 1888   4718 FD 7E 32    	ld	a, (iy+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
 1889   471B DD 67       	ld	ixh,a		; ixh=Number of blocks
 1890   471D 3D          	dec	a
-1891   471E CA 49 47    	jp	z,.umBloco	; only one block
+1891   471E CA 46 47    	jp	z,.umBloco	; only one block
 1892   4721             
 1893   4721             ; multiplos blocos
 1894   4721 3E 52       	ld	a, CMD18	; ler multiplos blocos com CMD18 = Read Multiple Blocks
@@ -1913,1053 +1913,1053 @@
 1900   472D DA 0E 47    	jp	c,terminaLeituraEscritaBloco
 1901   4730             
 1902   4730 21 00 7B    	ld	hl, SPIDATA
-1903   4733 CD 6B 4D    	call	RUN_HLPR
+1903   4733 CD 68 4D    	call	RUN_HLPR
 1904   4736             
-1905   4736             ;	ld	hl, (SPIDATA)	; descarta CRC
-1906   4736 3A 00 7B    	ld	a, (SPIDATA)
-1907   4739 3A 00 7B    	ld	a, (SPIDATA)
-1908   473C DD 25       	dec	ixh
-1909   473E C2 2A 47    	jp	nz,.loop
-1910   4741 3E 4C       	ld	a, CMD12	; acabou os blocos, mandar CMD12 para cancelar leitura
-1911   4743 CD DB 45    	call	SD_SEND_CMD_NO_ARGS
-1912   4746 C3 64 47    	jp	.fim
-1913   4749             
-1914   4749             .umBloco: 
-1915   4749 3E 51       	ld	a, CMD17	; ler somente um bloco com CMD17 = Read Single Block
-1916   474B CD E0 45    	call	SD_SEND_CMD_GET_ERROR
-1917   474E DA 0E 47    	jp	c,terminaLeituraEscritaBloco
-1918   4751             
-1919   4751 CD 3A 46    	call	WAIT_RESP_FE
-1920   4754 DA 0E 47    	jp	c,terminaLeituraEscritaBloco
-1921   4757 EB          	ex	de,hl
-1922   4758             
-1923   4758 21 00 7B    	ld	hl, SPIDATA
-1924   475B CD 6B 4D    	call	RUN_HLPR
-1925   475E             
-1926   475E             ;	ld	hl, (SPIDATA)	; descarta CRC
-1927   475E 3A 00 7B    	ld	a, (SPIDATA)
-1928   4761 3A 00 7B    	ld	a, (SPIDATA)
-1929   4764             .fim: 
-1930   4764 AF          	xor	a		; zera carry para informar leitura sem erros
-1931   4765 C3 0E 47    	jp	terminaLeituraEscritaBloco
-1932   4768             
-1933   4768             
-1934   4768             ; ------------------------------------------------
-1935   4768             ; Converte blocos para bytes. Na pratica faz
-1936   4768             ; BC DE = (BC DE) * 512
-1937   4768             ; ------------------------------------------------
-1938   4768             blocoParaByte: 
-1939   4768 41          	ld	b, c
-1940   4769 4A          	ld	c, d
-1941   476A 53          	ld	d, e
-1942   476B 1E 00       	ld	e, 0
-1943   476D CB 22       	sla	d
-1944   476F CB 11       	rl	c
-1945   4771 CB 10       	rl	b
-1946   4773 C9          	ret
-1947   4774             
-1948   4774             ; ------------------------------------------------
-1949   4774             ; Funcoes utilitarias
-1950   4774             ; ------------------------------------------------
-1951   4774             
-1952   4774             
-1953   4774             ; ------------------------------------------------
-1954   4774             ; Imprime string na tela apontada por DE
-1955   4774             ; Destroi todos os registradores
-1956   4774             ; ------------------------------------------------
-1957   4774             printString: 
-1958   4774 1A          	ld	a, (de)
-1959   4775 B7          	or	a
-1960   4776 C8          	ret	z
-1961   4777 CD A2 00    	call	CHPUT
-1962   477A 13          	inc	de
-1963   477B 18 F7       	jr	printString
-1964   477D             
-1965   477D             
-1966   477D             ; ------------------------------------------------
-1967   477D             ; Converte o byte em A para string em decimal no
-1968   477D             ; buffer apontado por hl
-1969   477D             ; Destroi AF, BC, HL, DE
-1970   477D             ; Output: hl=pointer to the end of the buffer
-1971   477D             ; ------------------------------------------------
-1972   477D             DecToAscii: 
-1973   477D EB          	ex	de,hl		; de=pointer to buffer
-1974   477E 26 00       	ld	h, 0
-1975   4780 6F          	ld	l, a		; copiar A para HL
-1976   4781 FD 36 39 01 	ld	(iy+WRKAREA.TEMP),1	; flag para indicar que devemos cortar os zeros a esquerda
-1977   4785 01 9C FF    	ld	bc, -100	; centenas
-1978   4788 CD 9B 47    	call	.num1
-1979   478B 0E F6       	ld	c, -10		; dezenas
-1980   478D CD 9B 47    	call	.num1
-1981   4790 FD 36 39 02 	ld	(iy+WRKAREA.TEMP),2	; unidade deve exibir 0 se for zero e nao corta-lo
-1982   4794 0E FF       	ld	c, -1		; unidades
-1983   4796 CD 9B 47    	call	.num1
-1984   4799 EB          	ex	de,hl
-1985   479A C9          	ret
-1986   479B             
-1987   479B             .num1: 
-1988   479B 3E 2F       	ld	a, '0'-1
-1989   479D             .num2: 
-1990   479D 3C          	inc	a		; contar o valor em ascii de '0' a '9'
-1991   479E 09          	add	hl, bc		; somar com negativo
-1992   479F 38 FC       	jr	c,.num2		; ainda nao zeramos
-1993   47A1 ED 42       	sbc	hl, bc		; retoma valor original
-1994   47A3 FD 35 39    	dec	(iy+WRKAREA.TEMP)	; se flag do corte do zero indicar para nao cortar, pula
-1995   47A6 20 08       	jr	nz,.naozero
-1996   47A8 FE 30       	cp	'0'		; devemos cortar os zeros a esquerda. Eh zero?
-1997   47AA 20 04       	jr	nz,.naozero
-1998   47AC FD 34 39    	inc	(iy+WRKAREA.TEMP)	; se for zero, nao salvamos e voltamos a flag
-1999   47AF C9          	ret
-2000   47B0             .naozero: 
-2001   47B0 12          	ld	(de), a		; eh zero ou eh outro numero, salvar
-2002   47B1 13          	inc	de		; incrementa ponteiro de destino
-2003   47B2 C9          	ret
-2004   47B3             
-2005   47B3             ; ------------------------------------------------
-2006   47B3             ; Converte o byte em A para string em hexa no
-2007   47B3             ; buffer apontado por DE
-2008   47B3             ; Destroi AF, C, DE
-2009   47B3             ; ------------------------------------------------
-2010   47B3             HexToAscii: 
-2011   47B3 4F          	ld	c, a
-2012   47B4 1F          	rra
-2013   47B5 1F          	rra
-2014   47B6 1F          	rra
-2015   47B7 1F          	rra
-2016   47B8 CD BC 47    	call	.conv
-2017   47BB 79          	ld  	a, c
-2018   47BC             .conv: 
-2019   47BC E6 0F       	and	$0F
-2020   47BE C6 90       	add	a, $90
-2021   47C0 27          	daa
-2022   47C1 CE 40       	adc	a, $40
-2023   47C3 27          	daa
-2024   47C4 12          	ld	(de), a
-2025   47C5 13          	inc	de
-2026   47C6 C9          	ret
-2027   47C7             
-2028   47C7             ; ------------------------------------------------
-2029   47C7             ; Converte o byte em A para string em decimal e
-2030   47C7             ; imprime na tela
-2031   47C7             ; Destroi AF, BC, HL, DE
-2032   47C7             ; ------------------------------------------------
-2033   47C7             printDecToAscii: 
-2034   47C7 26 00       	ld	h, 0
-2035   47C9 6F          	ld	l, a		; copiar A para HL
-2036   47CA 06 01       	ld	b, 1		; flag para indicar que devemos cortar os zeros a esquerda
-2037   47CC 11 9C FF    	ld	de, -100	; centenas
-2038   47CF CD DB 47    	call	.num1
-2039   47D2 1E F6       	ld	e, -10		; dezenas
-2040   47D4 CD DB 47    	call	.num1
-2041   47D7 06 02       	ld	b, 2		; unidade deve exibir 0 se for zero e nao corta-lo
-2042   47D9 1E FF       	ld	e, -1		; unidades
-2043   47DB             .num1: 
-2044   47DB 3E 2F       	ld	a, '0'-1
-2045   47DD             .num2: 
-2046   47DD 3C          	inc	a		; contar o valor em ascii de '0' a '9'
-2047   47DE 19          	add	hl, de		; somar com negativo
-2048   47DF 38 FC       	jr	c,.num2		; ainda nao zeramos
-2049   47E1 ED 52       	sbc	hl, de		; retoma valor original
-2050   47E3 10 06       	djnz	.naozero	; se flag do corte do zero indicar para nao cortar, pula
-2051   47E5 FE 30       	cp	'0'		; devemos cortar os zeros a esquerda. Eh zero?
-2052   47E7 20 02       	jr	nz,.naozero
-2053   47E9 04          	inc	b		; se for zero, nao imprimimos e voltamos a flag
-2054   47EA C9          	ret
-2055   47EB             .naozero: 
-2056   47EB             ;	push	hl		; nao eh zero ou eh outro numero, imprimir
-2057   47EB             ;	push	bc
-2058   47EB             ;	call	CHPUT
-2059   47EB             ;	pop	bc
-2060   47EB             ;	pop	hl
-2061   47EB             ;	ret
-2062   47EB C3 A2 00    	jp	CHPUT
-2063   47EE             
-2064   47EE             ; ------------------------------------------------
-2065   47EE             ; Procura pelo nome do fabricante em uma tabela.
-2066   47EE             ; A contem o byte do fabricante
-2067   47EE             ; Devolve HL apontando para o buffer do fabricante
-2068   47EE             ; e BC com o comprimento do texto
-2069   47EE             ; Destroi AF, BC, HL
-2070   47EE             ; ------------------------------------------------
-2071   47EE             pegaFabricante: 
-2072   47EE 4F          	ld	c, a
-2073   47EF 21 10 48    	ld	hl, tblFabricantes
-2074   47F2             
-2075   47F2             .loop: 
-2076   47F2 7E          	ld	a, (hl)
-2077   47F3 23          	inc	hl
-2078   47F4 B9          	cp	c
-2079   47F5 28 0C       	jr	z,.achado
-2080   47F7 B7          	or	a
-2081   47F8 28 09       	jr	z,.achado
-2082   47FA C5          	push	bc
-2083   47FB CD 03 48    	call	.achado
-2084   47FE 09          	add	hl, bc
-2085   47FF 23          	inc	hl
-2086   4800 C1          	pop	bc
-2087   4801 18 EF       	jr	.loop
-2088   4803             
-2089   4803             .achado: 
-2090   4803 0E 00       	ld	c, 0
-2091   4805 E5          	push	hl
-2092   4806 AF          	xor	a
-2093   4807             .loop2: 
-2094   4807 0C          	inc	c
-2095   4808 23          	inc	hl
-2096   4809 BE          	cp	(hl)
-2097   480A 20 FB       	jr	nz,.loop2
-2098   480C E1          	pop	hl
-2099   480D 06 00       	ld	b, 0
-2100   480F C9          	ret
-2101   4810             
-2102   4810             tblFabricantes: 
-2103   4810 01          	db	1
-2104   4811             	db	"Panasonic",0
-2104   4811 50616E61736F6E696300
-2105   481B 02          	db	2
-2106   481C             	db	"Toshiba",0
-2106   481C 546F736869626100
-2107   4824 03          	db	3
-2108   4825             	db	"SanDisk",0
-2108   4825 53616E4469736B00
-2109   482D 04          	db	4
-2110   482E             	db	"SMI-S",0
-2110   482E 534D492D5300
-2111   4834 06          	db	6
-2112   4835             	db	"Renesas",0
-2112   4835 52656E6573617300
-2113   483D 11          	db	17
-2114   483E             	db	"Dane-Elec",0
-2114   483E 44616E652D456C656300
-2115   4848 13          	db	19
-2116   4849             	db	"KingMax",0
-2116   4849 4B696E674D617800
-2117   4851 15          	db	21
-2118   4852             	db	"Samsung",0
-2118   4852 53616D73756E6700
-2119   485A 18          	db	24
-2120   485B             	db	"Infineon",0
-2120   485B 496E66696E656F6E00
-2121   4864 1A          	db	26
-2122   4865 50 51 49 00 	db	"PQI",0
-2123   4869 1B          	db	27
-2124   486A 536F6E7900  	db	"Sony",0
-2125   486F 1C          	db	28
-2126   4870             	db	"Transcend",0
-2126   4870 5472616E7363656E6400
-2127   487A 1D          	db	29
-2128   487B             	db	"A-DATA",0
-2128   487B 412D4441544100
-2129   4882 1F          	db	31
-2130   4883             	db	"SiliconPower",0
-2130   4883 53696C69636F6E506F77657200
-2131   4890 27          	db	39
-2132   4891             	db	"Verbatim",0
-2132   4891 566572626174696D00
-2133   489A 41          	db	65
-2134   489B 4F 4B 49 00 	db	"OKI",0
-2135   489F 73          	db	115
-2136   48A0             	db	"SilverHT",0
-2136   48A0 53696C766572485400
-2137   48A9 89          	db	137
-2138   48AA             	db	"L.Data",0
-2138   48AA 4C2E4461746100
-2139   48B1 00          	db	0
-2140   48B2             	db	"Generico",0
-2140   48B2 47656E657269636F00
-2141   48BB             
-2142   48BB             
-2143   48BB             ; ------------------------------------------------
-2144   48BB             ; Restore screen parameters on MSX>=2 if they're
-2145   48BB             ; not set yet
-2146   48BB             ; ------------------------------------------------
-2147   48BB             MYSETSCR: 
-2148   48BB 3A 2D 00    	ld	a,(MSXVER)
-2149   48BE B7          	or	a			; MSX1?
-2150   48BF 20 08       	jr	nz,.notMSX1		; No, skip
-2151   48C1             .MSX1: 
-2152   48C1 3A AF FC    	ld	a,(SCRMOD)
-2153   48C4 B7          	or	a			; SCREEN0 already?
-2154   48C5 C8          	ret	z			; Yes, quit
-2155   48C6 C3 6C 00    	jp	INITXT			; set screen0
-2156   48C9             
-2157   48C9             .notMSX1: 
-2158   48C9 0E 23       	ld	c,$23			; Block-2, R#3
-2159   48CB DD 21 F5 01 	ld 	ix,REDCLK
-2160   48CF CD 5F 01    	call	EXTROM
-2161   48D2 E6 01       	and	1
-2162   48D4 47          	ld	b,a
-2163   48D5 3A AF FC    	ld	a,(SCRMOD)
-2164   48D8 B8          	cp	b
-2165   48D9 20 1C       	jr	nz,.restore
-2166   48DB 0C          	inc	c
-2167   48DC DD 21 F5 01 	ld 	ix,REDCLK
-2168   48E0 CD 5F 01    	call	EXTROM
-2169   48E3 47          	ld	b,a
-2170   48E4 0C          	inc	c
-2171   48E5 DD 21 F5 01 	ld 	ix,REDCLK
-2172   48E9 CD 5F 01    	call	EXTROM
-2173   48EC 87          	add	a,a
-2174   48ED 87          	add	a,a
-2175   48EE 87          	add	a,a
-2176   48EF 87          	add	a,a
-2177   48F0 B0          	or	b
-2178   48F1 47          	ld	b,a
-2179   48F2 3A B0 F3    	ld	a,(LINLEN)
-2180   48F5 B8          	cp	b
-2181   48F6 C8          	ret	z
-2182   48F7             .restore: 
-2183   48F7 AF          	xor	a		; Don't displat the function keys
-2184   48F8 DD 21 85 01 	ld	ix,SDFSCR
-2185   48FC C3 5F 01    	jp	EXTROM
-2186   48FF             
-2187   48FF             ; ------------------------------------------------
-2188   48FF             ; Check if the STOP key was signaled on DRV_INIT
-2189   48FF             ; ------------------------------------------------
-2190   48FF             INICHKSTOP: 
-2191   48FF 3A 9B FC    	ld	a,(INTFLG)
-2192   4902 FE 04       	cp	4			; Was STOP pressed?
-2193   4904 C0          	ret	nz			; No, quit as fast as possible 
-2194   4905             
-2195   4905             	; Handle STOP to pause and read messages, and ask for the copyright info
-2196   4905 11 A3 4D    	ld	de,strBootpaused
-2197   4908 CD 74 47    	call	printString
-2198   490B 3E 07       .wait1: 	ld	a,7
-2199   490D CD 41 01    	call	SNSMAT
-2200   4910 E6 10       	and	$10			; Is STOP still pressed?
-2201   4912 28 F7       	jr	z,.wait1		; Wait for STOP to be released
-2202   4914 AF          	xor	a
-2203   4915 32 9B FC    	ld	(INTFLG),a		; Clear STOP flag
-2204   4918 06 00       	ld	b,0			; b=inhibit 'i' key flag
-2205   491A CD 9C 00    .wait2:  call	CHSNS
-2206   491D C4 3A 49    	call	nz,.chkikey		; Wait until a key is pressed
-2207   4920 3A 9B FC    	ld	a,(INTFLG)
-2208   4923 FE 04       	cp	4			; Was STOP pressed?
-2209   4925 20 F3       	jr	nz,.wait2		; No, return
-2210   4927 AF          	xor	a
-2211   4928 32 9B FC    	ld	(INTFLG),a		; Clear STOP flag
-2212   492B CD 56 01    	call	KILBUF
-2213   492E 06 1E       	ld	b,30			; Since the user is trying pause the
-2214   4930 76          .wait3: 	halt				; boot messages, this gives him enough
-2215   4931             					; time to react and pause the next
-2216   4931             					; driver
-2217   4931 3A 9B FC    	ld	a,(INTFLG)
-2218   4934 FE 04       	cp	4			; Was STOP pressed?
-2219   4936 C8          	ret	z			; quit so the next driver can process it
-2220   4937 10 F7       	djnz	.wait3			; The user will have the impression
-2221   4939             					; that he has a perfect timing.   ;)
-2222   4939 C9          	ret
-2223   493A             
-2224   493A             .chkikey: 
-2225   493A CB 40       	bit	0,b			; Was the copyright message shown?
-2226   493C C0          	ret	nz			; Yes, return
-2227   493D CD 9F 00    	call	CHGET
-2228   4940 FE 69       	cp	'i'
-2229   4942 28 03       	jr	z,.showcopyright
-2230   4944 FE 49       	cp	'I'
-2231   4946 C0          	ret	nz
-2232   4947             .showcopyright: 
-2233   4947 04          	inc	b			; Inhibit further presses of the i key 
-2234   4948 11 CE 4D    	ld	de,strCopyright
-2235   494B C3 74 47    	jp	printString
-2236   494E             
-2237   494E             
-2238   494E             
-2239   494E             ; ------------------------------------------------
-2240   494E             ; Install the R800 data transfer helper routine on WorkArea 
-2241   494E             ; ------------------------------------------------
-2242   494E             INSTR800HLP: 
-2243   494E 3A 2D 00    	ld	a,(MSXVER)
-2244   4951 FE 03       	cp	3		; MSX Turbo-R?
-2245   4953 D8          	ret	c		; No, return
-2246   4954 CD 7A 4D    	call	GTR800LDIR
-2247   4957 D9          	exx
-2248   4958 EB          	ex	de,hl
-2249   4959 21 62 49    	ld	hl,R800DATHLP
-2250   495C 01 07 00    	ld	bc,R800DATHLP.end-R800DATHLP
-2251   495F ED B0       	ldir
-2252   4961 C9          	ret
-2253   4962             
-2254   4962             ; ------------------------------------------------
-2255   4962             ; R800 optimized data transfer routine, copied to the WorkArea
-2256   4962             ; ------------------------------------------------
-2257   4962             R800DATHLP: 
-2258   4962 D9          	exx
-2259   4963 01 00 02    	ld	bc,512
-2260   4966 ED B0       	ldir
-2261   4968 C9          	ret
-2262   4969             .end
-2263   4969              
-2264   4969             
-2265   4969             ; ------------------------------------------------
-2266   4969             ; Z80 optimized data transfer routine, kept in ROM 
-2267   4969             ; ------------------------------------------------
-2268   4969             LDI512: 	; Z80 optimized 512 byte transfer
-2269   4969 D9          	exx
-2270   496A ED A0       > ldi
-2270   496C ED A0       > ldi
-2270   496E ED A0       > ldi
-2270   4970 ED A0       > ldi
-2270   4972 ED A0       > ldi
-2270   4974 ED A0       > ldi
-2270   4976 ED A0       > ldi
-2270   4978 ED A0       > ldi
-2270   497A ED A0       > ldi
-2270   497C ED A0       > ldi
-2270   497E ED A0       > ldi
-2270   4980 ED A0       > ldi
-2270   4982 ED A0       > ldi
-2270   4984 ED A0       > ldi
-2270   4986 ED A0       > ldi
-2270   4988 ED A0       > ldi
-2270   498A ED A0       > ldi
-2270   498C ED A0       > ldi
-2270   498E ED A0       > ldi
-2270   4990 ED A0       > ldi
-2270   4992 ED A0       > ldi
-2270   4994 ED A0       > ldi
-2270   4996 ED A0       > ldi
-2270   4998 ED A0       > ldi
-2270   499A ED A0       > ldi
-2270   499C ED A0       > ldi
-2270   499E ED A0       > ldi
-2270   49A0 ED A0       > ldi
-2270   49A2 ED A0       > ldi
-2270   49A4 ED A0       > ldi
-2270   49A6 ED A0       > ldi
-2270   49A8 ED A0       > ldi
-2270   49AA ED A0       > ldi
-2270   49AC ED A0       > ldi
-2270   49AE ED A0       > ldi
-2270   49B0 ED A0       > ldi
-2270   49B2 ED A0       > ldi
-2270   49B4 ED A0       > ldi
-2270   49B6 ED A0       > ldi
-2270   49B8 ED A0       > ldi
-2270   49BA ED A0       > ldi
-2270   49BC ED A0       > ldi
-2270   49BE ED A0       > ldi
-2270   49C0 ED A0       > ldi
-2270   49C2 ED A0       > ldi
-2270   49C4 ED A0       > ldi
-2270   49C6 ED A0       > ldi
-2270   49C8 ED A0       > ldi
-2270   49CA ED A0       > ldi
-2270   49CC ED A0       > ldi
-2270   49CE ED A0       > ldi
-2270   49D0 ED A0       > ldi
-2270   49D2 ED A0       > ldi
-2270   49D4 ED A0       > ldi
-2270   49D6 ED A0       > ldi
-2270   49D8 ED A0       > ldi
-2270   49DA ED A0       > ldi
-2270   49DC ED A0       > ldi
-2270   49DE ED A0       > ldi
-2270   49E0 ED A0       > ldi
-2270   49E2 ED A0       > ldi
-2270   49E4 ED A0       > ldi
-2270   49E6 ED A0       > ldi
-2270   49E8 ED A0       > ldi
-2270   49EA ED A0       > ldi
-2270   49EC ED A0       > ldi
-2270   49EE ED A0       > ldi
-2270   49F0 ED A0       > ldi
-2270   49F2 ED A0       > ldi
-2270   49F4 ED A0       > ldi
-2270   49F6 ED A0       > ldi
-2270   49F8 ED A0       > ldi
-2270   49FA ED A0       > ldi
-2270   49FC ED A0       > ldi
-2270   49FE ED A0       > ldi
-2270   4A00 ED A0       > ldi
-2270   4A02 ED A0       > ldi
-2270   4A04 ED A0       > ldi
-2270   4A06 ED A0       > ldi
-2270   4A08 ED A0       > ldi
-2270   4A0A ED A0       > ldi
-2270   4A0C ED A0       > ldi
-2270   4A0E ED A0       > ldi
-2270   4A10 ED A0       > ldi
-2270   4A12 ED A0       > ldi
-2270   4A14 ED A0       > ldi
-2270   4A16 ED A0       > ldi
-2270   4A18 ED A0       > ldi
-2270   4A1A ED A0       > ldi
-2270   4A1C ED A0       > ldi
-2270   4A1E ED A0       > ldi
-2270   4A20 ED A0       > ldi
-2270   4A22 ED A0       > ldi
-2270   4A24 ED A0       > ldi
-2270   4A26 ED A0       > ldi
-2270   4A28 ED A0       > ldi
-2270   4A2A ED A0       > ldi
-2270   4A2C ED A0       > ldi
-2270   4A2E ED A0       > ldi
-2270   4A30 ED A0       > ldi
-2270   4A32 ED A0       > ldi
-2270   4A34 ED A0       > ldi
-2270   4A36 ED A0       > ldi
-2270   4A38 ED A0       > ldi
-2270   4A3A ED A0       > ldi
-2270   4A3C ED A0       > ldi
-2270   4A3E ED A0       > ldi
-2270   4A40 ED A0       > ldi
-2270   4A42 ED A0       > ldi
-2270   4A44 ED A0       > ldi
-2270   4A46 ED A0       > ldi
-2270   4A48 ED A0       > ldi
-2270   4A4A ED A0       > ldi
-2270   4A4C ED A0       > ldi
-2270   4A4E ED A0       > ldi
-2270   4A50 ED A0       > ldi
-2270   4A52 ED A0       > ldi
-2270   4A54 ED A0       > ldi
-2270   4A56 ED A0       > ldi
-2270   4A58 ED A0       > ldi
-2270   4A5A ED A0       > ldi
-2270   4A5C ED A0       > ldi
-2270   4A5E ED A0       > ldi
-2270   4A60 ED A0       > ldi
-2270   4A62 ED A0       > ldi
-2270   4A64 ED A0       > ldi
-2270   4A66 ED A0       > ldi
-2270   4A68 ED A0       > ldi
-2270   4A6A ED A0       > ldi
-2270   4A6C ED A0       > ldi
-2270   4A6E ED A0       > ldi
-2270   4A70 ED A0       > ldi
-2270   4A72 ED A0       > ldi
-2270   4A74 ED A0       > ldi
-2270   4A76 ED A0       > ldi
-2270   4A78 ED A0       > ldi
-2270   4A7A ED A0       > ldi
-2270   4A7C ED A0       > ldi
-2270   4A7E ED A0       > ldi
-2270   4A80 ED A0       > ldi
-2270   4A82 ED A0       > ldi
-2270   4A84 ED A0       > ldi
-2270   4A86 ED A0       > ldi
-2270   4A88 ED A0       > ldi
-2270   4A8A ED A0       > ldi
-2270   4A8C ED A0       > ldi
-2270   4A8E ED A0       > ldi
-2270   4A90 ED A0       > ldi
-2270   4A92 ED A0       > ldi
-2270   4A94 ED A0       > ldi
-2270   4A96 ED A0       > ldi
-2270   4A98 ED A0       > ldi
-2270   4A9A ED A0       > ldi
-2270   4A9C ED A0       > ldi
-2270   4A9E ED A0       > ldi
-2270   4AA0 ED A0       > ldi
-2270   4AA2 ED A0       > ldi
-2270   4AA4 ED A0       > ldi
-2270   4AA6 ED A0       > ldi
-2270   4AA8 ED A0       > ldi
-2270   4AAA ED A0       > ldi
-2270   4AAC ED A0       > ldi
-2270   4AAE ED A0       > ldi
-2270   4AB0 ED A0       > ldi
-2270   4AB2 ED A0       > ldi
-2270   4AB4 ED A0       > ldi
-2270   4AB6 ED A0       > ldi
-2270   4AB8 ED A0       > ldi
-2270   4ABA ED A0       > ldi
-2270   4ABC ED A0       > ldi
-2270   4ABE ED A0       > ldi
-2270   4AC0 ED A0       > ldi
-2270   4AC2 ED A0       > ldi
-2270   4AC4 ED A0       > ldi
-2270   4AC6 ED A0       > ldi
-2270   4AC8 ED A0       > ldi
-2270   4ACA ED A0       > ldi
-2270   4ACC ED A0       > ldi
-2270   4ACE ED A0       > ldi
-2270   4AD0 ED A0       > ldi
-2270   4AD2 ED A0       > ldi
-2270   4AD4 ED A0       > ldi
-2270   4AD6 ED A0       > ldi
-2270   4AD8 ED A0       > ldi
-2270   4ADA ED A0       > ldi
-2270   4ADC ED A0       > ldi
-2270   4ADE ED A0       > ldi
-2270   4AE0 ED A0       > ldi
-2270   4AE2 ED A0       > ldi
-2270   4AE4 ED A0       > ldi
-2270   4AE6 ED A0       > ldi
-2270   4AE8 ED A0       > ldi
-2270   4AEA ED A0       > ldi
-2270   4AEC ED A0       > ldi
-2270   4AEE ED A0       > ldi
-2270   4AF0 ED A0       > ldi
-2270   4AF2 ED A0       > ldi
-2270   4AF4 ED A0       > ldi
-2270   4AF6 ED A0       > ldi
-2270   4AF8 ED A0       > ldi
-2270   4AFA ED A0       > ldi
-2270   4AFC ED A0       > ldi
-2270   4AFE ED A0       > ldi
-2270   4B00 ED A0       > ldi
-2270   4B02 ED A0       > ldi
-2270   4B04 ED A0       > ldi
-2270   4B06 ED A0       > ldi
-2270   4B08 ED A0       > ldi
-2270   4B0A ED A0       > ldi
-2270   4B0C ED A0       > ldi
-2270   4B0E ED A0       > ldi
-2270   4B10 ED A0       > ldi
-2270   4B12 ED A0       > ldi
-2270   4B14 ED A0       > ldi
-2270   4B16 ED A0       > ldi
-2270   4B18 ED A0       > ldi
-2270   4B1A ED A0       > ldi
-2270   4B1C ED A0       > ldi
-2270   4B1E ED A0       > ldi
-2270   4B20 ED A0       > ldi
-2270   4B22 ED A0       > ldi
-2270   4B24 ED A0       > ldi
-2270   4B26 ED A0       > ldi
-2270   4B28 ED A0       > ldi
-2270   4B2A ED A0       > ldi
-2270   4B2C ED A0       > ldi
-2270   4B2E ED A0       > ldi
-2270   4B30 ED A0       > ldi
-2270   4B32 ED A0       > ldi
-2270   4B34 ED A0       > ldi
-2270   4B36 ED A0       > ldi
-2270   4B38 ED A0       > ldi
-2270   4B3A ED A0       > ldi
-2270   4B3C ED A0       > ldi
-2270   4B3E ED A0       > ldi
-2270   4B40 ED A0       > ldi
-2270   4B42 ED A0       > ldi
-2270   4B44 ED A0       > ldi
-2270   4B46 ED A0       > ldi
-2270   4B48 ED A0       > ldi
-2270   4B4A ED A0       > ldi
-2270   4B4C ED A0       > ldi
-2270   4B4E ED A0       > ldi
-2270   4B50 ED A0       > ldi
-2270   4B52 ED A0       > ldi
-2270   4B54 ED A0       > ldi
-2270   4B56 ED A0       > ldi
-2270   4B58 ED A0       > ldi
-2270   4B5A ED A0       > ldi
-2270   4B5C ED A0       > ldi
-2270   4B5E ED A0       > ldi
-2270   4B60 ED A0       > ldi
-2270   4B62 ED A0       > ldi
-2270   4B64 ED A0       > ldi
-2270   4B66 ED A0       > ldi
-2270   4B68 ED A0       > ldi
-2270   4B6A ED A0       > ldi
-2270   4B6C ED A0       > ldi
-2270   4B6E ED A0       > ldi
-2270   4B70 ED A0       > ldi
-2270   4B72 ED A0       > ldi
-2270   4B74 ED A0       > ldi
-2270   4B76 ED A0       > ldi
-2270   4B78 ED A0       > ldi
-2270   4B7A ED A0       > ldi
-2270   4B7C ED A0       > ldi
-2270   4B7E ED A0       > ldi
-2270   4B80 ED A0       > ldi
-2270   4B82 ED A0       > ldi
-2270   4B84 ED A0       > ldi
-2270   4B86 ED A0       > ldi
-2270   4B88 ED A0       > ldi
-2270   4B8A ED A0       > ldi
-2270   4B8C ED A0       > ldi
-2270   4B8E ED A0       > ldi
-2270   4B90 ED A0       > ldi
-2270   4B92 ED A0       > ldi
-2270   4B94 ED A0       > ldi
-2270   4B96 ED A0       > ldi
-2270   4B98 ED A0       > ldi
-2270   4B9A ED A0       > ldi
-2270   4B9C ED A0       > ldi
-2270   4B9E ED A0       > ldi
-2270   4BA0 ED A0       > ldi
-2270   4BA2 ED A0       > ldi
-2270   4BA4 ED A0       > ldi
-2270   4BA6 ED A0       > ldi
-2270   4BA8 ED A0       > ldi
-2270   4BAA ED A0       > ldi
-2270   4BAC ED A0       > ldi
-2270   4BAE ED A0       > ldi
-2270   4BB0 ED A0       > ldi
-2270   4BB2 ED A0       > ldi
-2270   4BB4 ED A0       > ldi
-2270   4BB6 ED A0       > ldi
-2270   4BB8 ED A0       > ldi
-2270   4BBA ED A0       > ldi
-2270   4BBC ED A0       > ldi
-2270   4BBE ED A0       > ldi
-2270   4BC0 ED A0       > ldi
-2270   4BC2 ED A0       > ldi
-2270   4BC4 ED A0       > ldi
-2270   4BC6 ED A0       > ldi
-2270   4BC8 ED A0       > ldi
-2270   4BCA ED A0       > ldi
-2270   4BCC ED A0       > ldi
-2270   4BCE ED A0       > ldi
-2270   4BD0 ED A0       > ldi
-2270   4BD2 ED A0       > ldi
-2270   4BD4 ED A0       > ldi
-2270   4BD6 ED A0       > ldi
-2270   4BD8 ED A0       > ldi
-2270   4BDA ED A0       > ldi
-2270   4BDC ED A0       > ldi
-2270   4BDE ED A0       > ldi
-2270   4BE0 ED A0       > ldi
-2270   4BE2 ED A0       > ldi
-2270   4BE4 ED A0       > ldi
-2270   4BE6 ED A0       > ldi
-2270   4BE8 ED A0       > ldi
-2270   4BEA ED A0       > ldi
-2270   4BEC ED A0       > ldi
-2270   4BEE ED A0       > ldi
-2270   4BF0 ED A0       > ldi
-2270   4BF2 ED A0       > ldi
-2270   4BF4 ED A0       > ldi
-2270   4BF6 ED A0       > ldi
-2270   4BF8 ED A0       > ldi
-2270   4BFA ED A0       > ldi
-2270   4BFC ED A0       > ldi
-2270   4BFE ED A0       > ldi
-2270   4C00 ED A0       > ldi
-2270   4C02 ED A0       > ldi
-2270   4C04 ED A0       > ldi
-2270   4C06 ED A0       > ldi
-2270   4C08 ED A0       > ldi
-2270   4C0A ED A0       > ldi
-2270   4C0C ED A0       > ldi
-2270   4C0E ED A0       > ldi
-2270   4C10 ED A0       > ldi
-2270   4C12 ED A0       > ldi
-2270   4C14 ED A0       > ldi
-2270   4C16 ED A0       > ldi
-2270   4C18 ED A0       > ldi
-2270   4C1A ED A0       > ldi
-2270   4C1C ED A0       > ldi
-2270   4C1E ED A0       > ldi
-2270   4C20 ED A0       > ldi
-2270   4C22 ED A0       > ldi
-2270   4C24 ED A0       > ldi
-2270   4C26 ED A0       > ldi
-2270   4C28 ED A0       > ldi
-2270   4C2A ED A0       > ldi
-2270   4C2C ED A0       > ldi
-2270   4C2E ED A0       > ldi
-2270   4C30 ED A0       > ldi
-2270   4C32 ED A0       > ldi
-2270   4C34 ED A0       > ldi
-2270   4C36 ED A0       > ldi
-2270   4C38 ED A0       > ldi
-2270   4C3A ED A0       > ldi
-2270   4C3C ED A0       > ldi
-2270   4C3E ED A0       > ldi
-2270   4C40 ED A0       > ldi
-2270   4C42 ED A0       > ldi
-2270   4C44 ED A0       > ldi
-2270   4C46 ED A0       > ldi
-2270   4C48 ED A0       > ldi
-2270   4C4A ED A0       > ldi
-2270   4C4C ED A0       > ldi
-2270   4C4E ED A0       > ldi
-2270   4C50 ED A0       > ldi
-2270   4C52 ED A0       > ldi
-2270   4C54 ED A0       > ldi
-2270   4C56 ED A0       > ldi
-2270   4C58 ED A0       > ldi
-2270   4C5A ED A0       > ldi
-2270   4C5C ED A0       > ldi
-2270   4C5E ED A0       > ldi
-2270   4C60 ED A0       > ldi
-2270   4C62 ED A0       > ldi
-2270   4C64 ED A0       > ldi
-2270   4C66 ED A0       > ldi
-2270   4C68 ED A0       > ldi
-2270   4C6A ED A0       > ldi
-2270   4C6C ED A0       > ldi
-2270   4C6E ED A0       > ldi
-2270   4C70 ED A0       > ldi
-2270   4C72 ED A0       > ldi
-2270   4C74 ED A0       > ldi
-2270   4C76 ED A0       > ldi
-2270   4C78 ED A0       > ldi
-2270   4C7A ED A0       > ldi
-2270   4C7C ED A0       > ldi
-2270   4C7E ED A0       > ldi
-2270   4C80 ED A0       > ldi
-2270   4C82 ED A0       > ldi
-2270   4C84 ED A0       > ldi
-2270   4C86 ED A0       > ldi
-2270   4C88 ED A0       > ldi
-2270   4C8A ED A0       > ldi
-2270   4C8C ED A0       > ldi
-2270   4C8E ED A0       > ldi
-2270   4C90 ED A0       > ldi
-2270   4C92 ED A0       > ldi
-2270   4C94 ED A0       > ldi
-2270   4C96 ED A0       > ldi
-2270   4C98 ED A0       > ldi
-2270   4C9A ED A0       > ldi
-2270   4C9C ED A0       > ldi
-2270   4C9E ED A0       > ldi
-2270   4CA0 ED A0       > ldi
-2270   4CA2 ED A0       > ldi
-2270   4CA4 ED A0       > ldi
-2270   4CA6 ED A0       > ldi
-2270   4CA8 ED A0       > ldi
-2270   4CAA ED A0       > ldi
-2270   4CAC ED A0       > ldi
-2270   4CAE ED A0       > ldi
-2270   4CB0 ED A0       > ldi
-2270   4CB2 ED A0       > ldi
-2270   4CB4 ED A0       > ldi
-2270   4CB6 ED A0       > ldi
-2270   4CB8 ED A0       > ldi
-2270   4CBA ED A0       > ldi
-2270   4CBC ED A0       > ldi
-2270   4CBE ED A0       > ldi
-2270   4CC0 ED A0       > ldi
-2270   4CC2 ED A0       > ldi
-2270   4CC4 ED A0       > ldi
-2270   4CC6 ED A0       > ldi
-2270   4CC8 ED A0       > ldi
-2270   4CCA ED A0       > ldi
-2270   4CCC ED A0       > ldi
-2270   4CCE ED A0       > ldi
-2270   4CD0 ED A0       > ldi
-2270   4CD2 ED A0       > ldi
-2270   4CD4 ED A0       > ldi
-2270   4CD6 ED A0       > ldi
-2270   4CD8 ED A0       > ldi
-2270   4CDA ED A0       > ldi
-2270   4CDC ED A0       > ldi
-2270   4CDE ED A0       > ldi
-2270   4CE0 ED A0       > ldi
-2270   4CE2 ED A0       > ldi
-2270   4CE4 ED A0       > ldi
-2270   4CE6 ED A0       > ldi
-2270   4CE8 ED A0       > ldi
-2270   4CEA ED A0       > ldi
-2270   4CEC ED A0       > ldi
-2270   4CEE ED A0       > ldi
-2270   4CF0 ED A0       > ldi
-2270   4CF2 ED A0       > ldi
-2270   4CF4 ED A0       > ldi
-2270   4CF6 ED A0       > ldi
-2270   4CF8 ED A0       > ldi
-2270   4CFA ED A0       > ldi
-2270   4CFC ED A0       > ldi
-2270   4CFE ED A0       > ldi
-2270   4D00 ED A0       > ldi
-2270   4D02 ED A0       > ldi
-2270   4D04 ED A0       > ldi
-2270   4D06 ED A0       > ldi
-2270   4D08 ED A0       > ldi
-2270   4D0A ED A0       > ldi
-2270   4D0C ED A0       > ldi
-2270   4D0E ED A0       > ldi
-2270   4D10 ED A0       > ldi
-2270   4D12 ED A0       > ldi
-2270   4D14 ED A0       > ldi
-2270   4D16 ED A0       > ldi
-2270   4D18 ED A0       > ldi
-2270   4D1A ED A0       > ldi
-2270   4D1C ED A0       > ldi
-2270   4D1E ED A0       > ldi
-2270   4D20 ED A0       > ldi
-2270   4D22 ED A0       > ldi
-2270   4D24 ED A0       > ldi
-2270   4D26 ED A0       > ldi
-2270   4D28 ED A0       > ldi
-2270   4D2A ED A0       > ldi
-2270   4D2C ED A0       > ldi
-2270   4D2E ED A0       > ldi
-2270   4D30 ED A0       > ldi
-2270   4D32 ED A0       > ldi
-2270   4D34 ED A0       > ldi
-2270   4D36 ED A0       > ldi
-2270   4D38 ED A0       > ldi
-2270   4D3A ED A0       > ldi
-2270   4D3C ED A0       > ldi
-2270   4D3E ED A0       > ldi
-2270   4D40 ED A0       > ldi
-2270   4D42 ED A0       > ldi
-2270   4D44 ED A0       > ldi
-2270   4D46 ED A0       > ldi
-2270   4D48 ED A0       > ldi
-2270   4D4A ED A0       > ldi
-2270   4D4C ED A0       > ldi
-2270   4D4E ED A0       > ldi
-2270   4D50 ED A0       > ldi
-2270   4D52 ED A0       > ldi
-2270   4D54 ED A0       > ldi
-2270   4D56 ED A0       > ldi
-2270   4D58 ED A0       > ldi
-2270   4D5A ED A0       > ldi
-2270   4D5C ED A0       > ldi
-2270   4D5E ED A0       > ldi
-2270   4D60 ED A0       > ldi
-2270   4D62 ED A0       > ldi
-2270   4D64 ED A0       > ldi
-2270   4D66 ED A0       > ldi
-2270   4D68 ED A0       > ldi
-2271   4D6A C9          	ret
-2272   4D6B             
-2273   4D6B             ; ------------------------------------------------
-2274   4D6B             ; Jumps to a helper routine, usually in RAM
-2275   4D6B             ; Input: HL': Address of the target routine
-2276   4D6B             ; ------------------------------------------------
-2277   4D6B             RUN_HLPR: 
-2278   4D6B D9          	exx
-2279   4D6C E9          	jp	(hl)
-2280   4D6D             
-2281   4D6D             ; ------------------------------------------------
-2282   4D6D             ; Setup the arbitrary block size LDIR helper to be used
-2283   4D6D             ; Input   : none
-2284   4D6D             ; Output  : HL': Address of the block transfer routine to be used 
-2285   4D6D             ; Modifies: AF, DE', HL'
-2286   4D6D             ; ------------------------------------------------
-2287   4D6D             SETLDIRHLPR: 
-2288   4D6D D9          	exx
-2289   4D6E             	; Check for a Z80 or R800
-2290   4D6E AF          	xor	a		; Clear Cy
-2291   4D6F 3D          	dec	a		; A=#FF
-2292   4D70 ED F9       	db	#ED,#F9		; mulub a,a
-2293   4D72 38 05       	jr	c,.useLDIR	; Always use LDIR in RAM for the R800
-2294   4D74             
-2295   4D74 21 69 49    	ld	hl,LDI512
-2296   4D77 D9          	exx
-2297   4D78 C9          	ret
-2298   4D79             
-2299   4D79             .useLDIR: 
-2300   4D79 D9          	exx
-2301   4D7A             	; ***Continues on GTR800LDIR
-2302   4D7A             
-2303   4D7A             ; ------------------------------------------------
-2304   4D7A             ; Obtain the pointer to the R800 data transfer helper routine
-2305   4D7A             ; Input   : IY=Pointer to the WorkArea
-2306   4D7A             ; Output  : HL=pointer to R800 data transfer helper routine 
-2307   4D7A             ; Modifies: DE
-2308   4D7A             ;	    - Does an exx at the end
-2309   4D7A             ; ------------------------------------------------
-2310   4D7A             GTR800LDIR: 
-2311   4D7A FD E5       	push	iy
-2312   4D7C E1          	pop	hl			; hl=WorkArea
-2313   4D7D 11 3A 00    	ld	de,WRKAREA.TRLDIR
-2314   4D80 19          	add	hl,de
-2315   4D81 D9          	exx
-2316   4D82 C9          	ret
-2317   4D83             
-2318   4D83             
-2319   4D83             ; ------------------------------------------------
-2320   4D83             ; Debugging routines
-2321   4D83             ; ------------------------------------------------
-2322   4D83              IFDEF DEBUG
-2323   4D83~            PRTCHAR: 
-2324   4D83~            	push	ix,iy
-2325   4D83~            	ld	ix,CHPUT
-2326   4D83~            	ld	iy,(EXPTBL-1)
-2327   4D83~            	call	CALSLT
-2328   4D83~            	pop	iy,ix
-2329   4D83~            	ret
-2330   4D83~            PRTDOT: 
-2331   4D83~            	push	af
-2332   4D83~            	ld	a,'.'
-2333   4D83~            	call	PRTCHAR
-2334   4D83~            	pop	af
-2335   4D83~            	ret
-2336   4D83~            PRTDASH: 
-2337   4D83~            	push	af
-2338   4D83~            	ld	a,'-'
-2339   4D83~            	call	PRTCHAR
-2340   4D83~            	pop	af
-2341   4D83~            	ret
-2342   4D83              ENDIF
-2343   4D83             
-2344   4D83             
-2345   4D83             
-2346   4D83             ; ==========================================================================
-2347   4D83             strTitle: 
-2348   4D83             	db	13,"FBLabs SDHC driver v",27,'J'
-2348   4D83 0D46424C61627320534448432064726976657220761B4A
-2349   4D9A             	BYTE2STR VER_MAIN
-2349   4D9A 31          >	db	(value % 10)+$30
-2350   4D9B 2E          	db	'.'
-2351   4D9C             	BYTE2STR VER_SEC
-2351   4D9C 30          >	db	(value % 10)+$30
-2352   4D9D 2E          	db	'.'
-2353   4D9E             	BYTE2STR VER_REV
-2353   4D9E 31          >	db	((value / 10) % 10)+$30
-2353   4D9F 30          >	db	(value % 10)+$30
-2354   4DA0 0D 0A 00    	db	13,10,0
-2355   4DA3             
-2356   4DA3             ;		 |-------------39 chars----------------|
-2357   4DA3             strBootpaused: 
-2358   4DA3             	db	"Paused. Press <i> for the copyright info",13,10,0
-2358   4DA3 5061757365642E205072657373203C693E20666F722074686520636F70797269
-2358   4DC3 67687420696E666F0D0A00
-2359   4DCE             
-2360   4DCE             strCopyright: 
-2361   4DCE             	db	"(c) 2014 Fabio Belavenuto",13,10
-2361   4DCE 286329203230313420466162696F2042656C6176656E75746F0D0A
-2362   4DE9             	db	"(c) 2017 FRS",13,10
-2362   4DE9 2863292032303137204652530D0A
-2363   4DF7             	db	"Licenced under CERN OHL v1.1",13,10
-2363   4DF7 4C6963656E63656420756E646572204345524E204F484C2076312E310D0A
-2364   4E15             	db	"http://ohwr.org/cernohl",13,10
-2364   4E15 687474703A2F2F6F6877722E6F72672F6365726E6F686C0D0A
-2365   4E2E             	db	"PCB designed by Luciano Sturaro",13,10
-2365   4E2E 5043422064657369676E6564206279204C756369616E6F205374757261726F0D
-2365   4E4E 0A
-2366   4E4F             	; will use the CR+LF+EOS bellow 
-2367   4E4F             strCrLf: 
-2368   4E4F 0D 0A 00    	db	13,10,0
-2369   4E52             strCartao: 
-2370   4E52             	db	"- Slot ",0
-2370   4E52 2D20536C6F742000
-2371   4E5A             strVazio: 
-2372   4E5A             	db	"Empty",13,10,0
-2372   4E5A 456D7074790D0A00
-2373   4E62             strNaoIdentificado: 
-2374   4E62             	db	"Unknown!",13,10,0
-2374   4E62 556E6B6E6F776E210D0A00
-2375   4E6D             ;		 |-------------39 chars----------------|
-2376   4E6D             strMr_mp_desativada: 
-2377   4E6D             	db	"- Slot expander & Mem Mapper disabled",13,10,0
-2377   4E6D 2D20536C6F7420657870616E6465722026204D656D204D617070657220646973
-2377   4E8D 61626C65640D0A00
-2378   4E95              IFDEF HASMEGARAM
-2379   4E95~            strMapper: 
-2380   4E95~            	db	"- Slot expander & Mem Mapper enabled",13,10,0
-2381   4E95~            strMegaram: 
-2382   4E95~            	db	"- Slot expander & MegaRAM enabled",13,10,0
-2383   4E95              ELSE
-2384   4E95             strDrvMain: 
-2385   4E95             	db	"- Main driver selected",13,10,0
-2385   4E95 2D204D61696E206472697665722073656C65637465640D0A00
-2386   4EAE             strDrvDev: 
-2387   4EAE             	db	"- Development driver selected",13,10,0
-2387   4EAE 2D20446576656C6F706D656E74206472697665722073656C65637465640D0A00
-2388   4ECE              ENDIF
-2389   4ECE             strSDV1: 
-2390   4ECE             	db	"SDV1, ",0
-2390   4ECE 534456312C2000
-2391   4ED5             strSDV2: 
-2392   4ED5             	db	"SDV2, ",0
-2392   4ED5 534456322C2000
-2393   4EDC             
-2394   4EDC             ;-----------------------------------------------------------------------------
-2395   4EDC             ;
-2396   4EDC             ; End of the driver code
-2397   4EDC             
-2398   4EDC             DRV_END: 
-2399   4EDC             
-2400   4EDC             ;	ds	3ED0h-(DRV_END-DRV_START), $FF
-2401   4EDC FF          	ds	$7B00-$, #FF
+1905   4736 2A 00 7B    	ld	hl, (SPIDATA)	; descarta CRC
+1906   4739             ;	ld	a, (SPIDATA)
+1907   4739             ;	ld	a, (SPIDATA)
+1908   4739 DD 25       	dec	ixh
+1909   473B C2 2A 47    	jp	nz,.loop
+1910   473E 3E 4C       	ld	a, CMD12	; acabou os blocos, mandar CMD12 para cancelar leitura
+1911   4740 CD DB 45    	call	SD_SEND_CMD_NO_ARGS
+1912   4743 C3 61 47    	jp	.fim
+1913   4746             
+1914   4746             .umBloco: 
+1915   4746 3E 51       	ld	a, CMD17	; ler somente um bloco com CMD17 = Read Single Block
+1916   4748 CD E0 45    	call	SD_SEND_CMD_GET_ERROR
+1917   474B DA 0E 47    	jp	c,terminaLeituraEscritaBloco
+1918   474E             
+1919   474E CD 3A 46    	call	WAIT_RESP_FE
+1920   4751 DA 0E 47    	jp	c,terminaLeituraEscritaBloco
+1921   4754 EB          	ex	de,hl
+1922   4755             
+1923   4755 21 00 7B    	ld	hl, SPIDATA
+1924   4758 CD 68 4D    	call	RUN_HLPR
+1925   475B             
+1926   475B             ;	ld	hl, (SPIDATA)	; descarta CRC
+1927   475B 3A 00 7B    	ld	a, (SPIDATA)
+1928   475E 3A 00 7B    	ld	a, (SPIDATA)
+1929   4761             .fim: 
+1930   4761 AF          	xor	a		; zera carry para informar leitura sem erros
+1931   4762 C3 0E 47    	jp	terminaLeituraEscritaBloco
+1932   4765             
+1933   4765             
+1934   4765             ; ------------------------------------------------
+1935   4765             ; Converte blocos para bytes. Na pratica faz
+1936   4765             ; BC DE = (BC DE) * 512
+1937   4765             ; ------------------------------------------------
+1938   4765             blocoParaByte: 
+1939   4765 41          	ld	b, c
+1940   4766 4A          	ld	c, d
+1941   4767 53          	ld	d, e
+1942   4768 1E 00       	ld	e, 0
+1943   476A CB 22       	sla	d
+1944   476C CB 11       	rl	c
+1945   476E CB 10       	rl	b
+1946   4770 C9          	ret
+1947   4771             
+1948   4771             ; ------------------------------------------------
+1949   4771             ; Funcoes utilitarias
+1950   4771             ; ------------------------------------------------
+1951   4771             
+1952   4771             
+1953   4771             ; ------------------------------------------------
+1954   4771             ; Imprime string na tela apontada por DE
+1955   4771             ; Destroi todos os registradores
+1956   4771             ; ------------------------------------------------
+1957   4771             printString: 
+1958   4771 1A          	ld	a, (de)
+1959   4772 B7          	or	a
+1960   4773 C8          	ret	z
+1961   4774 CD A2 00    	call	CHPUT
+1962   4777 13          	inc	de
+1963   4778 18 F7       	jr	printString
+1964   477A             
+1965   477A             
+1966   477A             ; ------------------------------------------------
+1967   477A             ; Converte o byte em A para string em decimal no
+1968   477A             ; buffer apontado por hl
+1969   477A             ; Destroi AF, BC, HL, DE
+1970   477A             ; Output: hl=pointer to the end of the buffer
+1971   477A             ; ------------------------------------------------
+1972   477A             DecToAscii: 
+1973   477A EB          	ex	de,hl		; de=pointer to buffer
+1974   477B 26 00       	ld	h, 0
+1975   477D 6F          	ld	l, a		; copiar A para HL
+1976   477E FD 36 39 01 	ld	(iy+WRKAREA.TEMP),1	; flag para indicar que devemos cortar os zeros a esquerda
+1977   4782 01 9C FF    	ld	bc, -100	; centenas
+1978   4785 CD 98 47    	call	.num1
+1979   4788 0E F6       	ld	c, -10		; dezenas
+1980   478A CD 98 47    	call	.num1
+1981   478D FD 36 39 02 	ld	(iy+WRKAREA.TEMP),2	; unidade deve exibir 0 se for zero e nao corta-lo
+1982   4791 0E FF       	ld	c, -1		; unidades
+1983   4793 CD 98 47    	call	.num1
+1984   4796 EB          	ex	de,hl
+1985   4797 C9          	ret
+1986   4798             
+1987   4798             .num1: 
+1988   4798 3E 2F       	ld	a, '0'-1
+1989   479A             .num2: 
+1990   479A 3C          	inc	a		; contar o valor em ascii de '0' a '9'
+1991   479B 09          	add	hl, bc		; somar com negativo
+1992   479C 38 FC       	jr	c,.num2		; ainda nao zeramos
+1993   479E ED 42       	sbc	hl, bc		; retoma valor original
+1994   47A0 FD 35 39    	dec	(iy+WRKAREA.TEMP)	; se flag do corte do zero indicar para nao cortar, pula
+1995   47A3 20 08       	jr	nz,.naozero
+1996   47A5 FE 30       	cp	'0'		; devemos cortar os zeros a esquerda. Eh zero?
+1997   47A7 20 04       	jr	nz,.naozero
+1998   47A9 FD 34 39    	inc	(iy+WRKAREA.TEMP)	; se for zero, nao salvamos e voltamos a flag
+1999   47AC C9          	ret
+2000   47AD             .naozero: 
+2001   47AD 12          	ld	(de), a		; eh zero ou eh outro numero, salvar
+2002   47AE 13          	inc	de		; incrementa ponteiro de destino
+2003   47AF C9          	ret
+2004   47B0             
+2005   47B0             ; ------------------------------------------------
+2006   47B0             ; Converte o byte em A para string em hexa no
+2007   47B0             ; buffer apontado por DE
+2008   47B0             ; Destroi AF, C, DE
+2009   47B0             ; ------------------------------------------------
+2010   47B0             HexToAscii: 
+2011   47B0 4F          	ld	c, a
+2012   47B1 1F          	rra
+2013   47B2 1F          	rra
+2014   47B3 1F          	rra
+2015   47B4 1F          	rra
+2016   47B5 CD B9 47    	call	.conv
+2017   47B8 79          	ld  	a, c
+2018   47B9             .conv: 
+2019   47B9 E6 0F       	and	$0F
+2020   47BB C6 90       	add	a, $90
+2021   47BD 27          	daa
+2022   47BE CE 40       	adc	a, $40
+2023   47C0 27          	daa
+2024   47C1 12          	ld	(de), a
+2025   47C2 13          	inc	de
+2026   47C3 C9          	ret
+2027   47C4             
+2028   47C4             ; ------------------------------------------------
+2029   47C4             ; Converte o byte em A para string em decimal e
+2030   47C4             ; imprime na tela
+2031   47C4             ; Destroi AF, BC, HL, DE
+2032   47C4             ; ------------------------------------------------
+2033   47C4             printDecToAscii: 
+2034   47C4 26 00       	ld	h, 0
+2035   47C6 6F          	ld	l, a		; copiar A para HL
+2036   47C7 06 01       	ld	b, 1		; flag para indicar que devemos cortar os zeros a esquerda
+2037   47C9 11 9C FF    	ld	de, -100	; centenas
+2038   47CC CD D8 47    	call	.num1
+2039   47CF 1E F6       	ld	e, -10		; dezenas
+2040   47D1 CD D8 47    	call	.num1
+2041   47D4 06 02       	ld	b, 2		; unidade deve exibir 0 se for zero e nao corta-lo
+2042   47D6 1E FF       	ld	e, -1		; unidades
+2043   47D8             .num1: 
+2044   47D8 3E 2F       	ld	a, '0'-1
+2045   47DA             .num2: 
+2046   47DA 3C          	inc	a		; contar o valor em ascii de '0' a '9'
+2047   47DB 19          	add	hl, de		; somar com negativo
+2048   47DC 38 FC       	jr	c,.num2		; ainda nao zeramos
+2049   47DE ED 52       	sbc	hl, de		; retoma valor original
+2050   47E0 10 06       	djnz	.naozero	; se flag do corte do zero indicar para nao cortar, pula
+2051   47E2 FE 30       	cp	'0'		; devemos cortar os zeros a esquerda. Eh zero?
+2052   47E4 20 02       	jr	nz,.naozero
+2053   47E6 04          	inc	b		; se for zero, nao imprimimos e voltamos a flag
+2054   47E7 C9          	ret
+2055   47E8             .naozero: 
+2056   47E8             ;	push	hl		; nao eh zero ou eh outro numero, imprimir
+2057   47E8             ;	push	bc
+2058   47E8             ;	call	CHPUT
+2059   47E8             ;	pop	bc
+2060   47E8             ;	pop	hl
+2061   47E8             ;	ret
+2062   47E8 C3 A2 00    	jp	CHPUT
+2063   47EB             
+2064   47EB             ; ------------------------------------------------
+2065   47EB             ; Procura pelo nome do fabricante em uma tabela.
+2066   47EB             ; A contem o byte do fabricante
+2067   47EB             ; Devolve HL apontando para o buffer do fabricante
+2068   47EB             ; e BC com o comprimento do texto
+2069   47EB             ; Destroi AF, BC, HL
+2070   47EB             ; ------------------------------------------------
+2071   47EB             pegaFabricante: 
+2072   47EB 4F          	ld	c, a
+2073   47EC 21 0D 48    	ld	hl, tblFabricantes
+2074   47EF             
+2075   47EF             .loop: 
+2076   47EF 7E          	ld	a, (hl)
+2077   47F0 23          	inc	hl
+2078   47F1 B9          	cp	c
+2079   47F2 28 0C       	jr	z,.achado
+2080   47F4 B7          	or	a
+2081   47F5 28 09       	jr	z,.achado
+2082   47F7 C5          	push	bc
+2083   47F8 CD 00 48    	call	.achado
+2084   47FB 09          	add	hl, bc
+2085   47FC 23          	inc	hl
+2086   47FD C1          	pop	bc
+2087   47FE 18 EF       	jr	.loop
+2088   4800             
+2089   4800             .achado: 
+2090   4800 0E 00       	ld	c, 0
+2091   4802 E5          	push	hl
+2092   4803 AF          	xor	a
+2093   4804             .loop2: 
+2094   4804 0C          	inc	c
+2095   4805 23          	inc	hl
+2096   4806 BE          	cp	(hl)
+2097   4807 20 FB       	jr	nz,.loop2
+2098   4809 E1          	pop	hl
+2099   480A 06 00       	ld	b, 0
+2100   480C C9          	ret
+2101   480D             
+2102   480D             tblFabricantes: 
+2103   480D 01          	db	1
+2104   480E             	db	"Panasonic",0
+2104   480E 50616E61736F6E696300
+2105   4818 02          	db	2
+2106   4819             	db	"Toshiba",0
+2106   4819 546F736869626100
+2107   4821 03          	db	3
+2108   4822             	db	"SanDisk",0
+2108   4822 53616E4469736B00
+2109   482A 04          	db	4
+2110   482B             	db	"SMI-S",0
+2110   482B 534D492D5300
+2111   4831 06          	db	6
+2112   4832             	db	"Renesas",0
+2112   4832 52656E6573617300
+2113   483A 11          	db	17
+2114   483B             	db	"Dane-Elec",0
+2114   483B 44616E652D456C656300
+2115   4845 13          	db	19
+2116   4846             	db	"KingMax",0
+2116   4846 4B696E674D617800
+2117   484E 15          	db	21
+2118   484F             	db	"Samsung",0
+2118   484F 53616D73756E6700
+2119   4857 18          	db	24
+2120   4858             	db	"Infineon",0
+2120   4858 496E66696E656F6E00
+2121   4861 1A          	db	26
+2122   4862 50 51 49 00 	db	"PQI",0
+2123   4866 1B          	db	27
+2124   4867 536F6E7900  	db	"Sony",0
+2125   486C 1C          	db	28
+2126   486D             	db	"Transcend",0
+2126   486D 5472616E7363656E6400
+2127   4877 1D          	db	29
+2128   4878             	db	"A-DATA",0
+2128   4878 412D4441544100
+2129   487F 1F          	db	31
+2130   4880             	db	"SiliconPower",0
+2130   4880 53696C69636F6E506F77657200
+2131   488D 27          	db	39
+2132   488E             	db	"Verbatim",0
+2132   488E 566572626174696D00
+2133   4897 41          	db	65
+2134   4898 4F 4B 49 00 	db	"OKI",0
+2135   489C 73          	db	115
+2136   489D             	db	"SilverHT",0
+2136   489D 53696C766572485400
+2137   48A6 89          	db	137
+2138   48A7             	db	"L.Data",0
+2138   48A7 4C2E4461746100
+2139   48AE 00          	db	0
+2140   48AF             	db	"Generico",0
+2140   48AF 47656E657269636F00
+2141   48B8             
+2142   48B8             
+2143   48B8             ; ------------------------------------------------
+2144   48B8             ; Restore screen parameters on MSX>=2 if they're
+2145   48B8             ; not set yet
+2146   48B8             ; ------------------------------------------------
+2147   48B8             MYSETSCR: 
+2148   48B8 3A 2D 00    	ld	a,(MSXVER)
+2149   48BB B7          	or	a			; MSX1?
+2150   48BC 20 08       	jr	nz,.notMSX1		; No, skip
+2151   48BE             .MSX1: 
+2152   48BE 3A AF FC    	ld	a,(SCRMOD)
+2153   48C1 B7          	or	a			; SCREEN0 already?
+2154   48C2 C8          	ret	z			; Yes, quit
+2155   48C3 C3 6C 00    	jp	INITXT			; set screen0
+2156   48C6             
+2157   48C6             .notMSX1: 
+2158   48C6 0E 23       	ld	c,$23			; Block-2, R#3
+2159   48C8 DD 21 F5 01 	ld 	ix,REDCLK
+2160   48CC CD 5F 01    	call	EXTROM
+2161   48CF E6 01       	and	1
+2162   48D1 47          	ld	b,a
+2163   48D2 3A AF FC    	ld	a,(SCRMOD)
+2164   48D5 B8          	cp	b
+2165   48D6 20 1C       	jr	nz,.restore
+2166   48D8 0C          	inc	c
+2167   48D9 DD 21 F5 01 	ld 	ix,REDCLK
+2168   48DD CD 5F 01    	call	EXTROM
+2169   48E0 47          	ld	b,a
+2170   48E1 0C          	inc	c
+2171   48E2 DD 21 F5 01 	ld 	ix,REDCLK
+2172   48E6 CD 5F 01    	call	EXTROM
+2173   48E9 87          	add	a,a
+2174   48EA 87          	add	a,a
+2175   48EB 87          	add	a,a
+2176   48EC 87          	add	a,a
+2177   48ED B0          	or	b
+2178   48EE 47          	ld	b,a
+2179   48EF 3A B0 F3    	ld	a,(LINLEN)
+2180   48F2 B8          	cp	b
+2181   48F3 C8          	ret	z
+2182   48F4             .restore: 
+2183   48F4 AF          	xor	a		; Don't displat the function keys
+2184   48F5 DD 21 85 01 	ld	ix,SDFSCR
+2185   48F9 C3 5F 01    	jp	EXTROM
+2186   48FC             
+2187   48FC             ; ------------------------------------------------
+2188   48FC             ; Check if the STOP key was signaled on DRV_INIT
+2189   48FC             ; ------------------------------------------------
+2190   48FC             INICHKSTOP: 
+2191   48FC 3A 9B FC    	ld	a,(INTFLG)
+2192   48FF FE 04       	cp	4			; Was STOP pressed?
+2193   4901 C0          	ret	nz			; No, quit as fast as possible 
+2194   4902             
+2195   4902             	; Handle STOP to pause and read messages, and ask for the copyright info
+2196   4902 11 A0 4D    	ld	de,strBootpaused
+2197   4905 CD 71 47    	call	printString
+2198   4908 3E 07       .wait1: 	ld	a,7
+2199   490A CD 41 01    	call	SNSMAT
+2200   490D E6 10       	and	$10			; Is STOP still pressed?
+2201   490F 28 F7       	jr	z,.wait1		; Wait for STOP to be released
+2202   4911 AF          	xor	a
+2203   4912 32 9B FC    	ld	(INTFLG),a		; Clear STOP flag
+2204   4915 06 00       	ld	b,0			; b=inhibit 'i' key flag
+2205   4917 CD 9C 00    .wait2:  call	CHSNS
+2206   491A C4 37 49    	call	nz,.chkikey		; Wait until a key is pressed
+2207   491D 3A 9B FC    	ld	a,(INTFLG)
+2208   4920 FE 04       	cp	4			; Was STOP pressed?
+2209   4922 20 F3       	jr	nz,.wait2		; No, return
+2210   4924 AF          	xor	a
+2211   4925 32 9B FC    	ld	(INTFLG),a		; Clear STOP flag
+2212   4928 CD 56 01    	call	KILBUF
+2213   492B 06 1E       	ld	b,30			; Since the user is trying pause the
+2214   492D 76          .wait3: 	halt				; boot messages, this gives him enough
+2215   492E             					; time to react and pause the next
+2216   492E             					; driver
+2217   492E 3A 9B FC    	ld	a,(INTFLG)
+2218   4931 FE 04       	cp	4			; Was STOP pressed?
+2219   4933 C8          	ret	z			; quit so the next driver can process it
+2220   4934 10 F7       	djnz	.wait3			; The user will have the impression
+2221   4936             					; that he has a perfect timing.   ;)
+2222   4936 C9          	ret
+2223   4937             
+2224   4937             .chkikey: 
+2225   4937 CB 40       	bit	0,b			; Was the copyright message shown?
+2226   4939 C0          	ret	nz			; Yes, return
+2227   493A CD 9F 00    	call	CHGET
+2228   493D FE 69       	cp	'i'
+2229   493F 28 03       	jr	z,.showcopyright
+2230   4941 FE 49       	cp	'I'
+2231   4943 C0          	ret	nz
+2232   4944             .showcopyright: 
+2233   4944 04          	inc	b			; Inhibit further presses of the i key 
+2234   4945 11 CB 4D    	ld	de,strCopyright
+2235   4948 C3 71 47    	jp	printString
+2236   494B             
+2237   494B             
+2238   494B             
+2239   494B             ; ------------------------------------------------
+2240   494B             ; Install the R800 data transfer helper routine on WorkArea 
+2241   494B             ; ------------------------------------------------
+2242   494B             INSTR800HLP: 
+2243   494B 3A 2D 00    	ld	a,(MSXVER)
+2244   494E FE 03       	cp	3		; MSX Turbo-R?
+2245   4950 D8          	ret	c		; No, return
+2246   4951 CD 77 4D    	call	GTR800LDIR
+2247   4954 D9          	exx
+2248   4955 EB          	ex	de,hl
+2249   4956 21 5F 49    	ld	hl,R800DATHLP
+2250   4959 01 07 00    	ld	bc,R800DATHLP.end-R800DATHLP
+2251   495C ED B0       	ldir
+2252   495E C9          	ret
+2253   495F             
+2254   495F             ; ------------------------------------------------
+2255   495F             ; R800 optimized data transfer routine, copied to the WorkArea
+2256   495F             ; ------------------------------------------------
+2257   495F             R800DATHLP: 
+2258   495F D9          	exx
+2259   4960 01 00 02    	ld	bc,512
+2260   4963 ED B0       	ldir
+2261   4965 C9          	ret
+2262   4966             .end
+2263   4966              
+2264   4966             
+2265   4966             ; ------------------------------------------------
+2266   4966             ; Z80 optimized data transfer routine, kept in ROM 
+2267   4966             ; ------------------------------------------------
+2268   4966             LDI512: 	; Z80 optimized 512 byte transfer
+2269   4966 D9          	exx
+2270   4967 ED A0       > ldi
+2270   4969 ED A0       > ldi
+2270   496B ED A0       > ldi
+2270   496D ED A0       > ldi
+2270   496F ED A0       > ldi
+2270   4971 ED A0       > ldi
+2270   4973 ED A0       > ldi
+2270   4975 ED A0       > ldi
+2270   4977 ED A0       > ldi
+2270   4979 ED A0       > ldi
+2270   497B ED A0       > ldi
+2270   497D ED A0       > ldi
+2270   497F ED A0       > ldi
+2270   4981 ED A0       > ldi
+2270   4983 ED A0       > ldi
+2270   4985 ED A0       > ldi
+2270   4987 ED A0       > ldi
+2270   4989 ED A0       > ldi
+2270   498B ED A0       > ldi
+2270   498D ED A0       > ldi
+2270   498F ED A0       > ldi
+2270   4991 ED A0       > ldi
+2270   4993 ED A0       > ldi
+2270   4995 ED A0       > ldi
+2270   4997 ED A0       > ldi
+2270   4999 ED A0       > ldi
+2270   499B ED A0       > ldi
+2270   499D ED A0       > ldi
+2270   499F ED A0       > ldi
+2270   49A1 ED A0       > ldi
+2270   49A3 ED A0       > ldi
+2270   49A5 ED A0       > ldi
+2270   49A7 ED A0       > ldi
+2270   49A9 ED A0       > ldi
+2270   49AB ED A0       > ldi
+2270   49AD ED A0       > ldi
+2270   49AF ED A0       > ldi
+2270   49B1 ED A0       > ldi
+2270   49B3 ED A0       > ldi
+2270   49B5 ED A0       > ldi
+2270   49B7 ED A0       > ldi
+2270   49B9 ED A0       > ldi
+2270   49BB ED A0       > ldi
+2270   49BD ED A0       > ldi
+2270   49BF ED A0       > ldi
+2270   49C1 ED A0       > ldi
+2270   49C3 ED A0       > ldi
+2270   49C5 ED A0       > ldi
+2270   49C7 ED A0       > ldi
+2270   49C9 ED A0       > ldi
+2270   49CB ED A0       > ldi
+2270   49CD ED A0       > ldi
+2270   49CF ED A0       > ldi
+2270   49D1 ED A0       > ldi
+2270   49D3 ED A0       > ldi
+2270   49D5 ED A0       > ldi
+2270   49D7 ED A0       > ldi
+2270   49D9 ED A0       > ldi
+2270   49DB ED A0       > ldi
+2270   49DD ED A0       > ldi
+2270   49DF ED A0       > ldi
+2270   49E1 ED A0       > ldi
+2270   49E3 ED A0       > ldi
+2270   49E5 ED A0       > ldi
+2270   49E7 ED A0       > ldi
+2270   49E9 ED A0       > ldi
+2270   49EB ED A0       > ldi
+2270   49ED ED A0       > ldi
+2270   49EF ED A0       > ldi
+2270   49F1 ED A0       > ldi
+2270   49F3 ED A0       > ldi
+2270   49F5 ED A0       > ldi
+2270   49F7 ED A0       > ldi
+2270   49F9 ED A0       > ldi
+2270   49FB ED A0       > ldi
+2270   49FD ED A0       > ldi
+2270   49FF ED A0       > ldi
+2270   4A01 ED A0       > ldi
+2270   4A03 ED A0       > ldi
+2270   4A05 ED A0       > ldi
+2270   4A07 ED A0       > ldi
+2270   4A09 ED A0       > ldi
+2270   4A0B ED A0       > ldi
+2270   4A0D ED A0       > ldi
+2270   4A0F ED A0       > ldi
+2270   4A11 ED A0       > ldi
+2270   4A13 ED A0       > ldi
+2270   4A15 ED A0       > ldi
+2270   4A17 ED A0       > ldi
+2270   4A19 ED A0       > ldi
+2270   4A1B ED A0       > ldi
+2270   4A1D ED A0       > ldi
+2270   4A1F ED A0       > ldi
+2270   4A21 ED A0       > ldi
+2270   4A23 ED A0       > ldi
+2270   4A25 ED A0       > ldi
+2270   4A27 ED A0       > ldi
+2270   4A29 ED A0       > ldi
+2270   4A2B ED A0       > ldi
+2270   4A2D ED A0       > ldi
+2270   4A2F ED A0       > ldi
+2270   4A31 ED A0       > ldi
+2270   4A33 ED A0       > ldi
+2270   4A35 ED A0       > ldi
+2270   4A37 ED A0       > ldi
+2270   4A39 ED A0       > ldi
+2270   4A3B ED A0       > ldi
+2270   4A3D ED A0       > ldi
+2270   4A3F ED A0       > ldi
+2270   4A41 ED A0       > ldi
+2270   4A43 ED A0       > ldi
+2270   4A45 ED A0       > ldi
+2270   4A47 ED A0       > ldi
+2270   4A49 ED A0       > ldi
+2270   4A4B ED A0       > ldi
+2270   4A4D ED A0       > ldi
+2270   4A4F ED A0       > ldi
+2270   4A51 ED A0       > ldi
+2270   4A53 ED A0       > ldi
+2270   4A55 ED A0       > ldi
+2270   4A57 ED A0       > ldi
+2270   4A59 ED A0       > ldi
+2270   4A5B ED A0       > ldi
+2270   4A5D ED A0       > ldi
+2270   4A5F ED A0       > ldi
+2270   4A61 ED A0       > ldi
+2270   4A63 ED A0       > ldi
+2270   4A65 ED A0       > ldi
+2270   4A67 ED A0       > ldi
+2270   4A69 ED A0       > ldi
+2270   4A6B ED A0       > ldi
+2270   4A6D ED A0       > ldi
+2270   4A6F ED A0       > ldi
+2270   4A71 ED A0       > ldi
+2270   4A73 ED A0       > ldi
+2270   4A75 ED A0       > ldi
+2270   4A77 ED A0       > ldi
+2270   4A79 ED A0       > ldi
+2270   4A7B ED A0       > ldi
+2270   4A7D ED A0       > ldi
+2270   4A7F ED A0       > ldi
+2270   4A81 ED A0       > ldi
+2270   4A83 ED A0       > ldi
+2270   4A85 ED A0       > ldi
+2270   4A87 ED A0       > ldi
+2270   4A89 ED A0       > ldi
+2270   4A8B ED A0       > ldi
+2270   4A8D ED A0       > ldi
+2270   4A8F ED A0       > ldi
+2270   4A91 ED A0       > ldi
+2270   4A93 ED A0       > ldi
+2270   4A95 ED A0       > ldi
+2270   4A97 ED A0       > ldi
+2270   4A99 ED A0       > ldi
+2270   4A9B ED A0       > ldi
+2270   4A9D ED A0       > ldi
+2270   4A9F ED A0       > ldi
+2270   4AA1 ED A0       > ldi
+2270   4AA3 ED A0       > ldi
+2270   4AA5 ED A0       > ldi
+2270   4AA7 ED A0       > ldi
+2270   4AA9 ED A0       > ldi
+2270   4AAB ED A0       > ldi
+2270   4AAD ED A0       > ldi
+2270   4AAF ED A0       > ldi
+2270   4AB1 ED A0       > ldi
+2270   4AB3 ED A0       > ldi
+2270   4AB5 ED A0       > ldi
+2270   4AB7 ED A0       > ldi
+2270   4AB9 ED A0       > ldi
+2270   4ABB ED A0       > ldi
+2270   4ABD ED A0       > ldi
+2270   4ABF ED A0       > ldi
+2270   4AC1 ED A0       > ldi
+2270   4AC3 ED A0       > ldi
+2270   4AC5 ED A0       > ldi
+2270   4AC7 ED A0       > ldi
+2270   4AC9 ED A0       > ldi
+2270   4ACB ED A0       > ldi
+2270   4ACD ED A0       > ldi
+2270   4ACF ED A0       > ldi
+2270   4AD1 ED A0       > ldi
+2270   4AD3 ED A0       > ldi
+2270   4AD5 ED A0       > ldi
+2270   4AD7 ED A0       > ldi
+2270   4AD9 ED A0       > ldi
+2270   4ADB ED A0       > ldi
+2270   4ADD ED A0       > ldi
+2270   4ADF ED A0       > ldi
+2270   4AE1 ED A0       > ldi
+2270   4AE3 ED A0       > ldi
+2270   4AE5 ED A0       > ldi
+2270   4AE7 ED A0       > ldi
+2270   4AE9 ED A0       > ldi
+2270   4AEB ED A0       > ldi
+2270   4AED ED A0       > ldi
+2270   4AEF ED A0       > ldi
+2270   4AF1 ED A0       > ldi
+2270   4AF3 ED A0       > ldi
+2270   4AF5 ED A0       > ldi
+2270   4AF7 ED A0       > ldi
+2270   4AF9 ED A0       > ldi
+2270   4AFB ED A0       > ldi
+2270   4AFD ED A0       > ldi
+2270   4AFF ED A0       > ldi
+2270   4B01 ED A0       > ldi
+2270   4B03 ED A0       > ldi
+2270   4B05 ED A0       > ldi
+2270   4B07 ED A0       > ldi
+2270   4B09 ED A0       > ldi
+2270   4B0B ED A0       > ldi
+2270   4B0D ED A0       > ldi
+2270   4B0F ED A0       > ldi
+2270   4B11 ED A0       > ldi
+2270   4B13 ED A0       > ldi
+2270   4B15 ED A0       > ldi
+2270   4B17 ED A0       > ldi
+2270   4B19 ED A0       > ldi
+2270   4B1B ED A0       > ldi
+2270   4B1D ED A0       > ldi
+2270   4B1F ED A0       > ldi
+2270   4B21 ED A0       > ldi
+2270   4B23 ED A0       > ldi
+2270   4B25 ED A0       > ldi
+2270   4B27 ED A0       > ldi
+2270   4B29 ED A0       > ldi
+2270   4B2B ED A0       > ldi
+2270   4B2D ED A0       > ldi
+2270   4B2F ED A0       > ldi
+2270   4B31 ED A0       > ldi
+2270   4B33 ED A0       > ldi
+2270   4B35 ED A0       > ldi
+2270   4B37 ED A0       > ldi
+2270   4B39 ED A0       > ldi
+2270   4B3B ED A0       > ldi
+2270   4B3D ED A0       > ldi
+2270   4B3F ED A0       > ldi
+2270   4B41 ED A0       > ldi
+2270   4B43 ED A0       > ldi
+2270   4B45 ED A0       > ldi
+2270   4B47 ED A0       > ldi
+2270   4B49 ED A0       > ldi
+2270   4B4B ED A0       > ldi
+2270   4B4D ED A0       > ldi
+2270   4B4F ED A0       > ldi
+2270   4B51 ED A0       > ldi
+2270   4B53 ED A0       > ldi
+2270   4B55 ED A0       > ldi
+2270   4B57 ED A0       > ldi
+2270   4B59 ED A0       > ldi
+2270   4B5B ED A0       > ldi
+2270   4B5D ED A0       > ldi
+2270   4B5F ED A0       > ldi
+2270   4B61 ED A0       > ldi
+2270   4B63 ED A0       > ldi
+2270   4B65 ED A0       > ldi
+2270   4B67 ED A0       > ldi
+2270   4B69 ED A0       > ldi
+2270   4B6B ED A0       > ldi
+2270   4B6D ED A0       > ldi
+2270   4B6F ED A0       > ldi
+2270   4B71 ED A0       > ldi
+2270   4B73 ED A0       > ldi
+2270   4B75 ED A0       > ldi
+2270   4B77 ED A0       > ldi
+2270   4B79 ED A0       > ldi
+2270   4B7B ED A0       > ldi
+2270   4B7D ED A0       > ldi
+2270   4B7F ED A0       > ldi
+2270   4B81 ED A0       > ldi
+2270   4B83 ED A0       > ldi
+2270   4B85 ED A0       > ldi
+2270   4B87 ED A0       > ldi
+2270   4B89 ED A0       > ldi
+2270   4B8B ED A0       > ldi
+2270   4B8D ED A0       > ldi
+2270   4B8F ED A0       > ldi
+2270   4B91 ED A0       > ldi
+2270   4B93 ED A0       > ldi
+2270   4B95 ED A0       > ldi
+2270   4B97 ED A0       > ldi
+2270   4B99 ED A0       > ldi
+2270   4B9B ED A0       > ldi
+2270   4B9D ED A0       > ldi
+2270   4B9F ED A0       > ldi
+2270   4BA1 ED A0       > ldi
+2270   4BA3 ED A0       > ldi
+2270   4BA5 ED A0       > ldi
+2270   4BA7 ED A0       > ldi
+2270   4BA9 ED A0       > ldi
+2270   4BAB ED A0       > ldi
+2270   4BAD ED A0       > ldi
+2270   4BAF ED A0       > ldi
+2270   4BB1 ED A0       > ldi
+2270   4BB3 ED A0       > ldi
+2270   4BB5 ED A0       > ldi
+2270   4BB7 ED A0       > ldi
+2270   4BB9 ED A0       > ldi
+2270   4BBB ED A0       > ldi
+2270   4BBD ED A0       > ldi
+2270   4BBF ED A0       > ldi
+2270   4BC1 ED A0       > ldi
+2270   4BC3 ED A0       > ldi
+2270   4BC5 ED A0       > ldi
+2270   4BC7 ED A0       > ldi
+2270   4BC9 ED A0       > ldi
+2270   4BCB ED A0       > ldi
+2270   4BCD ED A0       > ldi
+2270   4BCF ED A0       > ldi
+2270   4BD1 ED A0       > ldi
+2270   4BD3 ED A0       > ldi
+2270   4BD5 ED A0       > ldi
+2270   4BD7 ED A0       > ldi
+2270   4BD9 ED A0       > ldi
+2270   4BDB ED A0       > ldi
+2270   4BDD ED A0       > ldi
+2270   4BDF ED A0       > ldi
+2270   4BE1 ED A0       > ldi
+2270   4BE3 ED A0       > ldi
+2270   4BE5 ED A0       > ldi
+2270   4BE7 ED A0       > ldi
+2270   4BE9 ED A0       > ldi
+2270   4BEB ED A0       > ldi
+2270   4BED ED A0       > ldi
+2270   4BEF ED A0       > ldi
+2270   4BF1 ED A0       > ldi
+2270   4BF3 ED A0       > ldi
+2270   4BF5 ED A0       > ldi
+2270   4BF7 ED A0       > ldi
+2270   4BF9 ED A0       > ldi
+2270   4BFB ED A0       > ldi
+2270   4BFD ED A0       > ldi
+2270   4BFF ED A0       > ldi
+2270   4C01 ED A0       > ldi
+2270   4C03 ED A0       > ldi
+2270   4C05 ED A0       > ldi
+2270   4C07 ED A0       > ldi
+2270   4C09 ED A0       > ldi
+2270   4C0B ED A0       > ldi
+2270   4C0D ED A0       > ldi
+2270   4C0F ED A0       > ldi
+2270   4C11 ED A0       > ldi
+2270   4C13 ED A0       > ldi
+2270   4C15 ED A0       > ldi
+2270   4C17 ED A0       > ldi
+2270   4C19 ED A0       > ldi
+2270   4C1B ED A0       > ldi
+2270   4C1D ED A0       > ldi
+2270   4C1F ED A0       > ldi
+2270   4C21 ED A0       > ldi
+2270   4C23 ED A0       > ldi
+2270   4C25 ED A0       > ldi
+2270   4C27 ED A0       > ldi
+2270   4C29 ED A0       > ldi
+2270   4C2B ED A0       > ldi
+2270   4C2D ED A0       > ldi
+2270   4C2F ED A0       > ldi
+2270   4C31 ED A0       > ldi
+2270   4C33 ED A0       > ldi
+2270   4C35 ED A0       > ldi
+2270   4C37 ED A0       > ldi
+2270   4C39 ED A0       > ldi
+2270   4C3B ED A0       > ldi
+2270   4C3D ED A0       > ldi
+2270   4C3F ED A0       > ldi
+2270   4C41 ED A0       > ldi
+2270   4C43 ED A0       > ldi
+2270   4C45 ED A0       > ldi
+2270   4C47 ED A0       > ldi
+2270   4C49 ED A0       > ldi
+2270   4C4B ED A0       > ldi
+2270   4C4D ED A0       > ldi
+2270   4C4F ED A0       > ldi
+2270   4C51 ED A0       > ldi
+2270   4C53 ED A0       > ldi
+2270   4C55 ED A0       > ldi
+2270   4C57 ED A0       > ldi
+2270   4C59 ED A0       > ldi
+2270   4C5B ED A0       > ldi
+2270   4C5D ED A0       > ldi
+2270   4C5F ED A0       > ldi
+2270   4C61 ED A0       > ldi
+2270   4C63 ED A0       > ldi
+2270   4C65 ED A0       > ldi
+2270   4C67 ED A0       > ldi
+2270   4C69 ED A0       > ldi
+2270   4C6B ED A0       > ldi
+2270   4C6D ED A0       > ldi
+2270   4C6F ED A0       > ldi
+2270   4C71 ED A0       > ldi
+2270   4C73 ED A0       > ldi
+2270   4C75 ED A0       > ldi
+2270   4C77 ED A0       > ldi
+2270   4C79 ED A0       > ldi
+2270   4C7B ED A0       > ldi
+2270   4C7D ED A0       > ldi
+2270   4C7F ED A0       > ldi
+2270   4C81 ED A0       > ldi
+2270   4C83 ED A0       > ldi
+2270   4C85 ED A0       > ldi
+2270   4C87 ED A0       > ldi
+2270   4C89 ED A0       > ldi
+2270   4C8B ED A0       > ldi
+2270   4C8D ED A0       > ldi
+2270   4C8F ED A0       > ldi
+2270   4C91 ED A0       > ldi
+2270   4C93 ED A0       > ldi
+2270   4C95 ED A0       > ldi
+2270   4C97 ED A0       > ldi
+2270   4C99 ED A0       > ldi
+2270   4C9B ED A0       > ldi
+2270   4C9D ED A0       > ldi
+2270   4C9F ED A0       > ldi
+2270   4CA1 ED A0       > ldi
+2270   4CA3 ED A0       > ldi
+2270   4CA5 ED A0       > ldi
+2270   4CA7 ED A0       > ldi
+2270   4CA9 ED A0       > ldi
+2270   4CAB ED A0       > ldi
+2270   4CAD ED A0       > ldi
+2270   4CAF ED A0       > ldi
+2270   4CB1 ED A0       > ldi
+2270   4CB3 ED A0       > ldi
+2270   4CB5 ED A0       > ldi
+2270   4CB7 ED A0       > ldi
+2270   4CB9 ED A0       > ldi
+2270   4CBB ED A0       > ldi
+2270   4CBD ED A0       > ldi
+2270   4CBF ED A0       > ldi
+2270   4CC1 ED A0       > ldi
+2270   4CC3 ED A0       > ldi
+2270   4CC5 ED A0       > ldi
+2270   4CC7 ED A0       > ldi
+2270   4CC9 ED A0       > ldi
+2270   4CCB ED A0       > ldi
+2270   4CCD ED A0       > ldi
+2270   4CCF ED A0       > ldi
+2270   4CD1 ED A0       > ldi
+2270   4CD3 ED A0       > ldi
+2270   4CD5 ED A0       > ldi
+2270   4CD7 ED A0       > ldi
+2270   4CD9 ED A0       > ldi
+2270   4CDB ED A0       > ldi
+2270   4CDD ED A0       > ldi
+2270   4CDF ED A0       > ldi
+2270   4CE1 ED A0       > ldi
+2270   4CE3 ED A0       > ldi
+2270   4CE5 ED A0       > ldi
+2270   4CE7 ED A0       > ldi
+2270   4CE9 ED A0       > ldi
+2270   4CEB ED A0       > ldi
+2270   4CED ED A0       > ldi
+2270   4CEF ED A0       > ldi
+2270   4CF1 ED A0       > ldi
+2270   4CF3 ED A0       > ldi
+2270   4CF5 ED A0       > ldi
+2270   4CF7 ED A0       > ldi
+2270   4CF9 ED A0       > ldi
+2270   4CFB ED A0       > ldi
+2270   4CFD ED A0       > ldi
+2270   4CFF ED A0       > ldi
+2270   4D01 ED A0       > ldi
+2270   4D03 ED A0       > ldi
+2270   4D05 ED A0       > ldi
+2270   4D07 ED A0       > ldi
+2270   4D09 ED A0       > ldi
+2270   4D0B ED A0       > ldi
+2270   4D0D ED A0       > ldi
+2270   4D0F ED A0       > ldi
+2270   4D11 ED A0       > ldi
+2270   4D13 ED A0       > ldi
+2270   4D15 ED A0       > ldi
+2270   4D17 ED A0       > ldi
+2270   4D19 ED A0       > ldi
+2270   4D1B ED A0       > ldi
+2270   4D1D ED A0       > ldi
+2270   4D1F ED A0       > ldi
+2270   4D21 ED A0       > ldi
+2270   4D23 ED A0       > ldi
+2270   4D25 ED A0       > ldi
+2270   4D27 ED A0       > ldi
+2270   4D29 ED A0       > ldi
+2270   4D2B ED A0       > ldi
+2270   4D2D ED A0       > ldi
+2270   4D2F ED A0       > ldi
+2270   4D31 ED A0       > ldi
+2270   4D33 ED A0       > ldi
+2270   4D35 ED A0       > ldi
+2270   4D37 ED A0       > ldi
+2270   4D39 ED A0       > ldi
+2270   4D3B ED A0       > ldi
+2270   4D3D ED A0       > ldi
+2270   4D3F ED A0       > ldi
+2270   4D41 ED A0       > ldi
+2270   4D43 ED A0       > ldi
+2270   4D45 ED A0       > ldi
+2270   4D47 ED A0       > ldi
+2270   4D49 ED A0       > ldi
+2270   4D4B ED A0       > ldi
+2270   4D4D ED A0       > ldi
+2270   4D4F ED A0       > ldi
+2270   4D51 ED A0       > ldi
+2270   4D53 ED A0       > ldi
+2270   4D55 ED A0       > ldi
+2270   4D57 ED A0       > ldi
+2270   4D59 ED A0       > ldi
+2270   4D5B ED A0       > ldi
+2270   4D5D ED A0       > ldi
+2270   4D5F ED A0       > ldi
+2270   4D61 ED A0       > ldi
+2270   4D63 ED A0       > ldi
+2270   4D65 ED A0       > ldi
+2271   4D67 C9          	ret
+2272   4D68             
+2273   4D68             ; ------------------------------------------------
+2274   4D68             ; Jumps to a helper routine, usually in RAM
+2275   4D68             ; Input: HL': Address of the target routine
+2276   4D68             ; ------------------------------------------------
+2277   4D68             RUN_HLPR: 
+2278   4D68 D9          	exx
+2279   4D69 E9          	jp	(hl)
+2280   4D6A             
+2281   4D6A             ; ------------------------------------------------
+2282   4D6A             ; Setup the arbitrary block size LDIR helper to be used
+2283   4D6A             ; Input   : none
+2284   4D6A             ; Output  : HL': Address of the block transfer routine to be used 
+2285   4D6A             ; Modifies: AF, DE', HL'
+2286   4D6A             ; ------------------------------------------------
+2287   4D6A             SETLDIRHLPR: 
+2288   4D6A D9          	exx
+2289   4D6B             	; Check for a Z80 or R800
+2290   4D6B AF          	xor	a		; Clear Cy
+2291   4D6C 3D          	dec	a		; A=#FF
+2292   4D6D ED F9       	db	#ED,#F9		; mulub a,a
+2293   4D6F 38 05       	jr	c,.useLDIR	; Always use LDIR in RAM for the R800
+2294   4D71             
+2295   4D71 21 66 49    	ld	hl,LDI512
+2296   4D74 D9          	exx
+2297   4D75 C9          	ret
+2298   4D76             
+2299   4D76             .useLDIR: 
+2300   4D76 D9          	exx
+2301   4D77             	; ***Continues on GTR800LDIR
+2302   4D77             
+2303   4D77             ; ------------------------------------------------
+2304   4D77             ; Obtain the pointer to the R800 data transfer helper routine
+2305   4D77             ; Input   : IY=Pointer to the WorkArea
+2306   4D77             ; Output  : HL=pointer to R800 data transfer helper routine 
+2307   4D77             ; Modifies: DE
+2308   4D77             ;	    - Does an exx at the end
+2309   4D77             ; ------------------------------------------------
+2310   4D77             GTR800LDIR: 
+2311   4D77 FD E5       	push	iy
+2312   4D79 E1          	pop	hl			; hl=WorkArea
+2313   4D7A 11 3A 00    	ld	de,WRKAREA.TRLDIR
+2314   4D7D 19          	add	hl,de
+2315   4D7E D9          	exx
+2316   4D7F C9          	ret
+2317   4D80             
+2318   4D80             
+2319   4D80             ; ------------------------------------------------
+2320   4D80             ; Debugging routines
+2321   4D80             ; ------------------------------------------------
+2322   4D80              IFDEF DEBUG
+2323   4D80~            PRTCHAR: 
+2324   4D80~            	push	ix,iy
+2325   4D80~            	ld	ix,CHPUT
+2326   4D80~            	ld	iy,(EXPTBL-1)
+2327   4D80~            	call	CALSLT
+2328   4D80~            	pop	iy,ix
+2329   4D80~            	ret
+2330   4D80~            PRTDOT: 
+2331   4D80~            	push	af
+2332   4D80~            	ld	a,'.'
+2333   4D80~            	call	PRTCHAR
+2334   4D80~            	pop	af
+2335   4D80~            	ret
+2336   4D80~            PRTDASH: 
+2337   4D80~            	push	af
+2338   4D80~            	ld	a,'-'
+2339   4D80~            	call	PRTCHAR
+2340   4D80~            	pop	af
+2341   4D80~            	ret
+2342   4D80              ENDIF
+2343   4D80             
+2344   4D80             
+2345   4D80             
+2346   4D80             ; ==========================================================================
+2347   4D80             strTitle: 
+2348   4D80             	db	13,"FBLabs SDHC driver v",27,'J'
+2348   4D80 0D46424C61627320534448432064726976657220761B4A
+2349   4D97             	BYTE2STR VER_MAIN
+2349   4D97 31          >	db	(value % 10)+$30
+2350   4D98 2E          	db	'.'
+2351   4D99             	BYTE2STR VER_SEC
+2351   4D99 30          >	db	(value % 10)+$30
+2352   4D9A 2E          	db	'.'
+2353   4D9B             	BYTE2STR VER_REV
+2353   4D9B 31          >	db	((value / 10) % 10)+$30
+2353   4D9C 30          >	db	(value % 10)+$30
+2354   4D9D 0D 0A 00    	db	13,10,0
+2355   4DA0             
+2356   4DA0             ;		 |-------------39 chars----------------|
+2357   4DA0             strBootpaused: 
+2358   4DA0             	db	"Paused. Press <i> for the copyright info",13,10,0
+2358   4DA0 5061757365642E205072657373203C693E20666F722074686520636F70797269
+2358   4DC0 67687420696E666F0D0A00
+2359   4DCB             
+2360   4DCB             strCopyright: 
+2361   4DCB             	db	"(c) 2014 Fabio Belavenuto",13,10
+2361   4DCB 286329203230313420466162696F2042656C6176656E75746F0D0A
+2362   4DE6             	db	"(c) 2017 FRS",13,10
+2362   4DE6 2863292032303137204652530D0A
+2363   4DF4             	db	"Licenced under CERN OHL v1.1",13,10
+2363   4DF4 4C6963656E63656420756E646572204345524E204F484C2076312E310D0A
+2364   4E12             	db	"http://ohwr.org/cernohl",13,10
+2364   4E12 687474703A2F2F6F6877722E6F72672F6365726E6F686C0D0A
+2365   4E2B             	db	"PCB designed by Luciano Sturaro",13,10
+2365   4E2B 5043422064657369676E6564206279204C756369616E6F205374757261726F0D
+2365   4E4B 0A
+2366   4E4C             	; will use the CR+LF+EOS bellow 
+2367   4E4C             strCrLf: 
+2368   4E4C 0D 0A 00    	db	13,10,0
+2369   4E4F             strCartao: 
+2370   4E4F             	db	"- Slot ",0
+2370   4E4F 2D20536C6F742000
+2371   4E57             strVazio: 
+2372   4E57             	db	"Empty",13,10,0
+2372   4E57 456D7074790D0A00
+2373   4E5F             strNaoIdentificado: 
+2374   4E5F             	db	"Unknown!",13,10,0
+2374   4E5F 556E6B6E6F776E210D0A00
+2375   4E6A             ;		 |-------------39 chars----------------|
+2376   4E6A             strMr_mp_desativada: 
+2377   4E6A             	db	"- Slot expander & Mem Mapper disabled",13,10,0
+2377   4E6A 2D20536C6F7420657870616E6465722026204D656D204D617070657220646973
+2377   4E8A 61626C65640D0A00
+2378   4E92              IFDEF HASMEGARAM
+2379   4E92~            strMapper: 
+2380   4E92~            	db	"- Slot expander & Mem Mapper enabled",13,10,0
+2381   4E92~            strMegaram: 
+2382   4E92~            	db	"- Slot expander & MegaRAM enabled",13,10,0
+2383   4E92              ELSE
+2384   4E92             strDrvMain: 
+2385   4E92             	db	"- Main driver selected",13,10,0
+2385   4E92 2D204D61696E206472697665722073656C65637465640D0A00
+2386   4EAB             strDrvDev: 
+2387   4EAB             	db	"- Development driver selected",13,10,0
+2387   4EAB 2D20446576656C6F706D656E74206472697665722073656C65637465640D0A00
+2388   4ECB              ENDIF
+2389   4ECB             strSDV1: 
+2390   4ECB             	db	"SDV1, ",0
+2390   4ECB 534456312C2000
+2391   4ED2             strSDV2: 
+2392   4ED2             	db	"SDV2, ",0
+2392   4ED2 534456322C2000
+2393   4ED9             
+2394   4ED9             ;-----------------------------------------------------------------------------
+2395   4ED9             ;
+2396   4ED9             ; End of the driver code
+2397   4ED9             
+2398   4ED9             DRV_END: 
+2399   4ED9             
+2400   4ED9             ;	ds	3ED0h-(DRV_END-DRV_START), $FF
+2401   4ED9 FF          	ds	$7B00-$, #FF
 2402   7B00             
 2403   7B00             

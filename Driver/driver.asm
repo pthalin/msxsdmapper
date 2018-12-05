@@ -1901,9 +1901,9 @@ LerBloco:
 	ld	hl, SPIDATA
 	call	RUN_HLPR
 
-;	ld	hl, (SPIDATA)	; descarta CRC
-	ld	a, (SPIDATA)
-	ld	a, (SPIDATA)
+	ld	hl, (SPIDATA)	; descarta CRC
+;	ld	a, (SPIDATA)
+;	ld	a, (SPIDATA)
 	dec	ixh
 	jp	nz,.loop
 	ld	a, CMD12	; acabou os blocos, mandar CMD12 para cancelar leitura

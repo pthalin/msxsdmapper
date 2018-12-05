@@ -32,6 +32,7 @@ entity sdmapper is
 		m1_n_i			: in    std_logic;
 		sltsl_n_i		: in    std_logic;
 		busdir_n_o		: out   std_logic;
+		wait_n_o			: out   std_logic;
 		-- ROM interface
 		rom_a_o			: out   std_logic_vector(17 downto 14);
 		rom_ce_n_o		: out   std_logic;
@@ -87,7 +88,7 @@ architecture Behavioral of sdmapper is
 begin
 
 	-- Porta SPI
-	portaspi: entity work.spi
+	portaspi: entity work.spi2
 	port map (
 		clock_i			=> clock_i,
 		reset_n_i		=> reset_n_i,
@@ -96,11 +97,14 @@ begin
 		data_bus_io		=> data_bus_io,
 		wr_n_i			=> wr_n_i,
 		rd_n_i			=> rd_n_i,
+		wait_n_o			=> wait_n_s,
 		-- SD card interface
 		spi_sclk_o		=> sd_sclk_o,
 		spi_mosi_o		=> sd_mosi_o,
 		spi_miso_i		=> sd_miso_i
 	);
+
+	wait_n_o	<= 'Z'	when wait_n_s = '1'	else '0';
 
 	-- Expansor de slot
 	exp: entity work.exp_slot

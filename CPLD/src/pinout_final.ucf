@@ -33,6 +33,7 @@ NET "rd_n_i"            LOC = "P56" ;
 NET "iorq_n_i"          LOC = "P58" ; 
 NET "m1_n_i"            LOC = "P59" ; 
 NET "busdir_n_o"        LOC = "P49" ;
+NET "wait_n_o"          LOC = "P36" ;
 NET "sw_i<0>"           LOC = "P2"  ; 
 NET "sw_i<1>"           LOC = "P1"  ; 
 NET "ram_a_o<13>"       LOC = "P70" ; 
