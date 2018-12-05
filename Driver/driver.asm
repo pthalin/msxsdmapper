@@ -302,8 +302,9 @@ SING_DBL  equ     7820h ;"1-Single side / 2-Double side"
 ; Driver flags:
 ;    bit 0: 0 for drive-based, 1 for device-based
 ;    bit 1: 1 for hot-plug devices supported (device-based drivers only)
+;    bit 2: 1 if the driver implements the DRV_CONFIG routine
 
-	db 1+(2*DRV_HOTPLUG)
+	db 1+2*DRV_HOTPLUG+4
 
 ;-----------------------------------------------------------------------------
 ;
@@ -341,8 +342,9 @@ DRV_NAME:
 	jp	DRV_DIRECT2
 	jp	DRV_DIRECT3
 	jp	DRV_DIRECT4
+	jp	DRV_CONFIG
 
-	ds	15
+	ds	12
 
 	; These routines are mandatory for device-based drivers
 
@@ -423,7 +425,16 @@ DRV_INIT:
 .call2ini:
  ENDIF ; TURBOINIT
 	call	MYSETSCR		; Set the screen mode
-	call	pegaWorkArea		; HL=IY=Work area pointer
+	call	pegaWorkArea		; IY=Work area pointer
+
+;	; Clear the work area
+	push	iy
+	pop	hl
+	ld	de,hl
+	inc	de
+	ld	bc,WRKAREA.TRLDIR
+	ld	(hl),0
+	ldir
 
 	ld	de,strTitle		; prints the title 
 	call	printString
@@ -621,6 +632,63 @@ DRV_DIRECT4:
 	ret
 
 
+;-----------------------------------------------------------------------------
+;
+; Get driver configuration 
+; (bit 2 of driver flags must be set if this routine is implemented)
+;
+; Input:
+;   A = Configuration index
+;   BC, DE, HL = Depends on the configuration
+;
+; Output:
+;   A = 0: Ok
+;       1: Configuration not available for the supplied index
+;   BC, DE, HL = Depends on the configuration
+;
+; * Get number of drives at boot time (for device-based drivers only):
+;   Input:
+;     A = 1
+;     B = 0 for DOS 2 mode, 1 for DOS 1 mode
+;   Output:
+;     B = number of drives
+;
+; * Get default configuration for drive
+;   Input:
+;     A = 2
+;     B = 0 for DOS 2 mode, 1 for DOS 1 mode
+;     C = Relative drive number at boot time (0~n)
+;   Output:
+;     B = Device index (1~7)
+;     C = LUN index
+
+DRV_CONFIG:
+	or	a
+	jr	z,.notavail
+	cp	1
+	jr	nz,.tryC2
+
+	; Config-1: Get number of drives at boot time
+	ld	b,2
+	xor	a
+	ret
+
+.tryC2: cp	2
+	jr	nz,.notavail
+
+	; Config-2: Get default configuration for drive
+	ld	b,c
+	inc	b
+	ld	c,1
+	xor	a
+	ret
+
+
+.notavail:
+	ld	a,1
+	ret
+
+
 ;=====
 ;=====  BEGIN of DEVICE-BASED specific routines
 ;=====
@@ -651,7 +719,7 @@ DRV_DIRECT4:
 
 DEV_RW:
 	push	af
-	cp	a, 3		; somente 2 dispositivos
+	cp	3		; somente 2 dispositivos
 	jr	nc,.saicomerroidl
 	dec	c		; somente 1 logical unit
 	jr	nz,.saicomerroidl
@@ -783,7 +851,7 @@ DEV_W:
 ; provided, not the leftmost.
 
 DEV_INFO:
-	cp	a,3		; somente 2 dispositivos
+	cp	3		; somente 2 dispositivos
 	jr	c,.devok
 	ld	a,1		; invalid device index
 	ret
@@ -795,19 +863,27 @@ DEV_INFO:
 	djnz	.naoBasic
 
 ; Basic information:
-	ld	(hl), 1		; 1 logical unit somente
+	ld	(hl),1		; 1 logical unit somente
 	inc	hl
 	xor	a
 	ld	(hl),a		; reservado, deve ser 0
 	ret			; retorna com A=0 (OK)
 
 .naoBasic:
-	ld	a,2
-;	ret	c		; No card present? Quit with info not available
+	push	hl,bc,af
+	call	DEV_STATUS	; We need to do this because SD cards are removable devices, not just
+				; removable media 
+	or	a		; Is this device available?
+	jr	nz,.getinfo	; Yes, get this device info
+	pop	af,bc,hl	; Flush the stack
+.noinfo:
+	ld	a,2		; Quit with "Info not available" status
+	ret
 
-	push	hl
+.getinfo:
+	pop	af
 	call	calculaCIDoffset	; calculamos em IX a posicao correta do offset CID dependendo do cartao atual
-	pop	hl
+	pop	bc,hl
 	djnz	.naoManuf
 ; Manufacturer Name:
 	push	hl		; salva ponteiro do buffer
@@ -817,19 +893,17 @@ DEV_INFO:
 	ld	(hl), a
 	inc	hl
 	djnz	.loop1
-	pop	de		; recuperamos ponteiro do buffer em DE
-	ld	a, '('		; colocamos (xx) xxx no buffer
-	ld	(de), a
-	inc	de
+	pop	hl		; hl=pointer to Nextor buffer 
+	ld	(hl),'('	; Place "(xx) " on the buffer
+	inc	hl
 	ld	a, (ix)		; byte do fabricante
 	call	DecToAscii
-	ld	a, ')'
-	ld	(de), a
-	inc	de
-	ld	a, ' '
-	ld	(de), a
-	inc	de
+	ld	(hl),')'
+	inc	hl
+	ld	(hl),' '
+	inc	hl
 	ld	a, (ix)		; byte do fabricante
+	ex	de,hl
 	call	pegaFabricante	; pegar nome do fabricante em HL
 	ldir			; e colocar no buffer
 	xor	a		; Return with A=0 (Ok)
@@ -841,8 +915,7 @@ DEV_INFO:
 	push	hl		; guarda HL que aponta para buffer do Nextor
 	push	ix
 	pop	hl		; joga IX para HL
-	ld	d, 0
-	ld	e, 3		; adiciona offset do productname em HL
+	ld	de,3		; adiciona offset do productname em HL
 	add	hl, de
 	pop	de		; recupera buffer do Nextor em DE
 	ld	bc, 5		; 5 caracteres
@@ -858,6 +931,7 @@ DEV_INFO:
 	ret
 
 .naoProduct:
+	djnz	.noinfo
 ; Serial Number:
 	ld	(hl),'0'	; Coloca prefixo "0x"
 	inc	hl
@@ -866,13 +940,12 @@ DEV_INFO:
 	push	hl		; guarda HL que aponta para buffer do Nextor
 	push	ix
 	pop	hl		; joga IX para HL
-	ld	d, 0
-	ld	e, 9		; adiciona offset do productname em HL
+	ld	de, 9		; adiciona offset do productname em HL
 	add	hl, de
 	pop	de		; recupera buffer do nextor em DE
 	ld	b, 4		; 4 bytes do serial
 .loop3:
-	ld	a, (hl)
+	ld	a,(hl)
 	call	HexToAscii	; converter HEXA para ASCII
 	inc	hl
 	djnz	.loop3
@@ -925,13 +998,17 @@ DEV_STATUS:
 	jr	nz,.nodev
  IFDEF DEBUG
 	push	af
-	ld	a,'S'
+	ld	a,'S'		; DEV_STATUS debug ID
+	call	PRTCHAR
+	pop	af
+	push	af
+	add	'0'		; Device number
 	call	PRTCHAR
 	pop	af
  ENDIF
 	push	bc
 	ld	a,c
-	call	pegaWorkArea	; HL=IY=Work area pointer
+	call	pegaWorkArea	; IY=Work area pointer
 	pop	bc
 	ld	(iy+WRKAREA.NUMSD),c	; salva numero do device atual (1 ou 2)
 	ld	a,c
@@ -1031,28 +1108,60 @@ DEV_STATUS:
 ; For other types of device, these fields must be zero.
 
 LUN_INFO:
-	cp	a, 3		; somente 2 dispositivo
+	cp	3		; somente 2 dispositivo
 	jr	nc,.saicomerro
 	dec	b		; somente 1 logical unit
 	jr	nz,.saicomerro
-	push	hl
-	call	testaCartao
+
+ IFDEF DEBUG
+	push	af
+	ld	a,'L'		; LUN_INFO debug ID
+	call	PRTCHAR
+	pop	af
+	push	af
+	add	'0'		; Print the device number
+	call	PRTCHAR
+	pop	af
+ ENDIF
+
+	push	af,hl
+	inc	b		; b=LUN=1
+	call	DEV_STATUS	; Is there a card present? 
 	pop	hl
-	jr	nc,.ok		; nao tem erro com o cartao
-.saicomerro:
-	ld	a, 1		; informar erro
-	ret
+	or	a
+	jr	nz,.ok		; device is available
+	pop	af
+.nomedia:
+ IFDEF DEBUG
+	push	af
+	ld	a,'N'
+	call	PRTCHAR
+	pop	af
+ ENDIF
+	xor	a
+	ld	b,7
+.nmloop:
+	ld	(hl),a		; 0=block device
+	inc	hl
+	djnz	.nmloop		; Fill the rest with "0=information not available"
+	jr	.wflagsnCHS	; Fill the rest of the info about the device
+
 .ok:
+ IFDEF DEBUG
+	ld	a,'P'
+	call	PRTCHAR
+ ENDIF
+
+	pop	af
 	push	hl
 	call	calculaBLOCOSoffset	; calcular em IX e HL o offset correto do buffer que armazena total de blocos
 	pop	hl		; do cartao dependendo do cartao atual solicitado
 	xor	a
-	ld	(hl), a		; Informar que o dispositivo eh do tipo block device
+	ld	(hl),a		; 0 = block device 
 	inc	hl
-	ld	(hl), a		; tamanho de um bloco = 512 bytes (coloca $00, $02 que é $200 = 512)
+	ld	(hl),a		; Block size lsb 
 	inc	hl
-	ld	a, 2
-	ld	(hl), a
+	ld	(hl),2		; Block size msb = 512
 	inc	hl
 	ld	a, (ix)		; copia numero de blocos total
 	ld	(hl), a
@@ -1063,11 +1172,11 @@ LUN_INFO:
 	ld	a, (ix+2)
 	ld	(hl), a
 	inc	hl
-	xor	a		; cartoes SD tem total de blocos em 24 bits, mas o Nextor pede numero de
-	ld	(hl), a 	; 32 bits, entao coloca 0 no MSB
-	inc	hl
-	ld	a, 1		; flags: dispositivo R/W removivel
-	ld	(hl), a
+	ld	(hl), 0		; cartoes SD tem total de blocos em 24 bits, mas o Nextor pede numero de
+	inc	hl 		; 32 bits, entao coloca 0 no MSB
+
+.wflagsnCHS:
+	ld	(hl),1		; flags: dispositivo R/W removivel
 	inc	hl
 	xor	a		; CHS = 0
 	ld	(hl), a
@@ -1075,9 +1184,12 @@ LUN_INFO:
 	ld	(hl), a
 	inc	hl
 	ld	(hl), a
-	inc	hl
-	xor	a		; informar que dados foram preenchidos
+	ret			; Return with A-0: Ok, filled the buffer
+
+.saicomerro:
+	ld	a, 1		; Return with A=1: Error
 	ret
+
 
 ;=====
 ;=====  END of DEVICE-BASED specific routines
@@ -1106,38 +1218,6 @@ pegaWorkArea:
 	push	hl
 	pop	iy		; em IY temos o mesmo ponteiro
 	pop	hl,af
-	ret
-
-;------------------------------------------------
-; Testa se cartao esta inserido e/ou houve erro
-; na ultima vez que foi acessado. Carry indica
-; erro
-; Destroi AF, HL, IX, C
-;------------------------------------------------
-testaCartao:
-	push	af
-	call	pegaWorkArea	; HL=IY=Work area pointer
-	pop	af
-	ld	(iy+WRKAREA.NUMSD), a	; salva numero do device atual (1 ou 2)
-	ld	c, a
-	ld	(SPICTRL), a	; Selects SD
-	ld	a, (SPISTATUS)	; testar se cartao esta inserido
-	call	disableSDs
-	and	$02
-	jr	nz,.saicomerro				
-	ld	a, (iy+WRKAREA.CARDFLAGS)	; testar bit de erro do cartao nas flags
-	and	c
-	jr	z,.ok
-	scf			; indica erro
-	ret
-.ok:
-	xor	a		; zera carry indicando sem erro
-	ret
-.saicomerro:
-	ld	a, (iy+WRKAREA.CARDFLAGS)	; marca bit de erro nas flags
-	or	c
-	ld	(iy+WRKAREA.CARDFLAGS), a
-	scf
 	ret
 
 ;------------------------------------------------
@@ -1597,7 +1677,7 @@ WAIT_RESP_NO_FF:
 .loop:
 	ld	a, (SPIDATA)
 	cp	$FF		; testa $FF
-	ret		nz		; sai se nao for $FF
+	ret	nz		; sai se nao for $FF
 	djnz	.loop
 	dec	c
 	jr	nz,.loop
@@ -1725,9 +1805,8 @@ GravarBloco:
 	ld	de,SPIDATA
 	call	RUN_HLPR
 
-;	ld	de,$FFFF	; envia dummy CRC
-;	ld	(SPIDATA),de
-	ld	(SPIDATA),a
+	ld	a,$FF		; envia dummy CRC
+	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
 	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
 	and	$1F		; testa bits erro
@@ -1739,14 +1818,12 @@ GravarBloco:
 	dec	ixh		; Next block
 	jp	nz,.loop
 
-;	ld	hl, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
-	ld	a, (SPIDATA)
+	ld	a, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
 	ld	a, (SPIDATA)
 	ld	a, $FD		; enviar $FD para informar ao cartao que acabou os dados
 	ld	(SPIDATA),a
-;	ld	hl,(SPIDATA)	; 2 dummy reads
-	ld	a, (SPIDATA)
-	ld	a, (SPIDATA)
+	ld	a,(SPIDATA)	; 2 dummy reads
+	ld	a,(SPIDATA)
 	call	WAIT_RESP_NO_00	; esperar cartao
 	jp	.fim		; CMD25 concluido, sair informando nenhum erro
 
@@ -1770,10 +1847,10 @@ GravarBloco:
 	ld	de,SPIDATA
 	call	RUN_HLPR
 
-;	ld	de,$FFFF	; envia dummy CRC
-;	ld	(SPIDATA),de
+	ld	a,$FF		; envia dummy CRC
+	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
 	ld	(SPIDATA),a
-	ld	(SPIDATA),a
+
 	call	WAIT_RESP_NO_FF	; esperar cartao
 	and	$1F		; testa bits erro
 	cp	5
@@ -1887,10 +1964,12 @@ printString:
 
 ; ------------------------------------------------
 ; Converte o byte em A para string em decimal no
-; buffer apontado por DE
+; buffer apontado por hl
 ; Destroi AF, BC, HL, DE
+; Output: hl=pointer to the end of the buffer
 ; ------------------------------------------------
 DecToAscii:
+	ex	de,hl		; de=pointer to buffer
 	ld	h, 0
 	ld	l, a		; copiar A para HL
 	ld	(iy+WRKAREA.TEMP),1	; flag para indicar que devemos cortar os zeros a esquerda
@@ -1900,6 +1979,10 @@ DecToAscii:
 	call	.num1
 	ld	(iy+WRKAREA.TEMP),2	; unidade deve exibir 0 se for zero e nao corta-lo
 	ld	c, -1		; unidades
+	call	.num1
+	ex	de,hl
+	ret
+
 .num1:
 	ld	a, '0'-1
 .num2:
@@ -1969,12 +2052,13 @@ printDecToAscii:
 	inc	b		; se for zero, nao imprimimos e voltamos a flag
 	ret
 .naozero:
-	push	hl		; nao eh zero ou eh outro numero, imprimir
-	push	bc
-	call	CHPUT
-	pop	bc
-	pop	hl
-	ret
+;	push	hl		; nao eh zero ou eh outro numero, imprimir
+;	push	bc
+;	call	CHPUT
+;	pop	bc
+;	pop	hl
+;	ret
+	jp	CHPUT
 
 ; ------------------------------------------------
 ; Procura pelo nome do fabricante em uma tabela.
