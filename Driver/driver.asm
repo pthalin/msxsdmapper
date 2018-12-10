@@ -1805,9 +1805,10 @@ GravarBloco:
 	ld	de,SPIDATA
 	call	RUN_HLPR
 
-	ld	a,$FF		; envia dummy CRC
-	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
-	ld	(SPIDATA),a
+	ld	(SPIDATA),de
+;	ld	a,$FF		; envia dummy CRC
+;	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
+;	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
 	and	$1F		; testa bits erro
 	cp	5
@@ -1847,9 +1848,10 @@ GravarBloco:
 	ld	de,SPIDATA
 	call	RUN_HLPR
 
-	ld	a,$FF		; envia dummy CRC
-	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
-	ld	(SPIDATA),a
+	ld	(SPIDATA),de
+;	ld	a,$FF		; envia dummy CRC
+;	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
+;	ld	(SPIDATA),a
 
 	call	WAIT_RESP_NO_FF	; esperar cartao
 	and	$1F		; testa bits erro
@@ -1922,9 +1924,9 @@ LerBloco:
 	ld	hl, SPIDATA
 	call	RUN_HLPR
 
-;	ld	hl, (SPIDATA)	; descarta CRC
-	ld	a, (SPIDATA)
-	ld	a, (SPIDATA)
+	ld	hl, (SPIDATA)	; descarta CRC
+;	ld	a, (SPIDATA)
+;	ld	a, (SPIDATA)
 .fim:
 	xor	a		; zera carry para informar leitura sem erros
 	jp	terminaLeituraEscritaBloco
