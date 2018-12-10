@@ -88,7 +88,7 @@ architecture Behavioral of sdmapper is
 begin
 
 	-- Porta SPI
-	portaspi: entity work.spi2
+	portaspi: entity work.spi
 	port map (
 		clock_i			=> clock_i,
 		reset_n_i		=> reset_n_i,
