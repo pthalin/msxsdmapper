@@ -200,6 +200,7 @@ begin
 		rd_n_s		<= '1';
 		wr_n_s		<= '1';
 		spi_miso_s	<= '0';
+--		wait_n_s		<= '1';
 
 		wait for 100 ns;
 		reset_n_s	<= '1';
@@ -235,7 +236,7 @@ begin
 		-- I/O read port #01
 		z80_io_read('1',         addr_s, data_s, cs_s, rd_n_s);
 
-		wait for 100 us;
+		wait for 3 us;
 
 		-- wait
 		tb_end <= '1';

@@ -12,6 +12,7 @@ entity spi is
 		data_bus_io		: inout std_logic_vector(7 downto 0);
 		wr_n_i			: in    std_logic;
 		rd_n_i			: in    std_logic;
+		wait_n_o			: out   std_logic;
 		-- SPI interface
 		spi_sclk_o		: out   std_logic;
 		spi_mosi_o		: out   std_logic;
@@ -25,7 +26,7 @@ architecture Behavioral of spi is
 	signal spi_cs_s			: std_logic;
 	signal spi_data_q			: std_logic_vector(7 downto 0);
 	-- State type of the SPI transfer state machine
-	type   state_type_t is (s_idle, s_running, s_done);
+	type   state_type_t is (s_idle, s_cleaning, s_running, s_done);
 	signal state_s				: state_type_t;
 	signal shift_reg_s		: std_logic_vector(8 downto 0);	-- Shift register
 	signal spi_data_buf_s	: std_logic_vector(7 downto 0);	-- Buffer to hold data to be sent
@@ -35,6 +36,7 @@ architecture Behavioral of spi is
 	signal spi_clk_out_s		: std_logic;							-- Buffered SPI clock output
 	signal prev_spi_clk_s	: std_logic;							-- Previous SPI clock state
 	signal ff_q, ff_clr_s	: std_logic;
+	signal wait_n_s			: std_logic;
 
 begin
 
@@ -89,17 +91,25 @@ begin
 					if ff_q = '1' then
 						count_q     <= (others => '0');
 						shift_reg_s <= spi_data_buf_s & '1';
-						state_s     <= s_running;
+						state_s     <= s_cleaning;
+						ff_clr_s    <= '1';
 					end if;
+					wait_n_s	<= '1';
+
+				when s_cleaning =>
+					ff_clr_s	<= '0';
+					state_s	<= s_running;
 
 				when s_running =>
+					if start_s = '1' then
+						wait_n_s	<= '0';
+					end if;
 					if prev_spi_clk_s = '1' and spi_clk_buf_s = '0' then
 						spi_clk_out_s <= '0';
 						count_q       <= count_q + 1;
 						shift_reg_s   <= shift_reg_s(7 downto 0) & spi_miso_i;
 						if count_q = "0111" then
 							state_s		<= s_done;
-							ff_clr_s		<= '1';
 						end if;
 					elsif prev_spi_clk_s = '0' and spi_clk_buf_s = '1' then
 						spi_clk_out_s <= '1';
@@ -108,7 +118,7 @@ begin
 				when s_done =>
 					spi_data_q	<= shift_reg_s(7 downto 0);
 					state_s		<= s_idle;
-					ff_clr_s		<= '0';
+
 				when others =>
 					null;
 			end case;
@@ -131,5 +141,6 @@ begin
 
 	spi_mosi_o <= shift_reg_s(8);
 	spi_sclk_o <= spi_clk_out_s;
+	wait_n_o	<= wait_n_s;
 
 end architecture;
