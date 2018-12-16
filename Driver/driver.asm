@@ -1,7 +1,7 @@
-; Projeto MSX SD Mapper
+; Projeto MSX SD-Mapper
 
 ; Copyright (c) 2014 Fabio Belavenuto
-; Enhanced by FRS
+; Copyright (c) 2017, 2018 Fabio R. Schmidlin 
 
 ; This documentation describes Open Hardware and is licensed under the CERN OHL v. 1.1.
 ; You may redistribute and modify this documentation under the terms of the
@@ -29,8 +29,12 @@
 
 ; 7F02h		: 8-bit timer (97.65625 KHz frequency, 10.24uS resolution) (read/write)
 ; When a value is written, the timer will decrease it until it reaches zero
+;
+;
+; A Special thanks goes to Elm-chan, for publishing the documentation we used to
+; create this driver. http://elm-chan.org/docs/mmc/mmc_e.html
 
-	output	"driver.bin"
+	output	"Driver/driver.bin"
 
 ;-----------------------------------------------------------------------------
 ;
@@ -39,7 +43,10 @@
 
 ; DEFINE HASMEGARAM	; Driver for an SD-Mapper with MegaRAM
 ; DEFINE TURBOINIT	; Disable for the interfaces with the CPLD firmware turbo bug 
-; DEFINE DEBUG		; Set for debugging output
+; DEFINE DEBUG1		; Enable level-1 debugging (Only status queries)
+; DEFINE DEBUG2		; Enable level-2 debugging (RW calls)
+; DEFINE DEBUG3		; Enable level-3 debugging (requires level-1). Also logs invalid DEVs and LUN numbers
+
 
 ;Driver type:
 ;   0 for drive-based
@@ -58,7 +65,7 @@ DRV_HOTPLUG	equ	1
 
 VER_MAIN	equ	1
 VER_SEC		equ	0
-VER_REV		equ	10
+VER_REV		equ	11
 
 ;-----------------------------------------------------------------------------
 ; SPI addresses. Check the Technical info above for the bit contents
@@ -99,19 +106,58 @@ CMD58	= 58 | $40
 ACMD23	= 23 | $40
 ACMD41	= 41 | $40
 
-; Work area variables 
+; SD card errors
+R1ERR:
+.IDLE		= 1	; In idle state
+.ERARST		= 2	; Erase reset
+.ILLGCMD	= 3	; Illegal command
+.CRCERR		= 4	; Communication CRC error
+.ERAERR		= 5	; Erase sequence error
+.ADDRERR	= 6	; Address error
+.PARMERR	= 7	; Parameter error
+.M_IDLE		= (1 shl .IDLE)
+.M_ERARST	= (1 shl .ERARST)
+.M_ILLGCMD	= (1 shl .ILLGCMD)
+.M_CRCERR	= (1 shl .CRCERR)
+.M_ERAERR	= (1 shl .ERAERR)
+.M_ADDRERR	= (1 shl .ADDRERR)
+.M_PARMERR	= (1 shl .PARMERR)
+
+; Work area stuctures 
  STRUCT WRKAREA
-BCSD 		ds 16	; Card Specific Data
-BCID1		ds 16	; Card-ID of card1
-BCID2		ds 16	; Card-ID of card2
+TRLDIR		dw	; Pointer to the R800 data transfer helper
 NUMSD		db 	; Currently selected card: 1 or 2 
 CARDFLAGS	db 	; Flags that indicate card-change or card error 
+			; b0: card1 error
+			; b1: card2 error
+			; b2: card1 LUN changed flag
+			; b3: card2 LUN changed flag
+			; b4: card1 DEV changed flag
+			; b5: card2 DEV changed flag
+			; b6: card1 version
+			; b7: card2 version
 NUMBLOCKS	db 	; Number of blocks in multi-block operations 
-BLOCKS1		ds 3	; 3 bytes. Size of card1, in blocks.
-BLOCKS2		ds 3	; 3 bytes. Size of card2, in blocks.
-TEMP		db	; Temporary data
-TRLDIR		ds 8	; R800 data transfer helper 
+TEMP		ds 3	; Buffer for temporary data 
  ENDS
+
+; WRKAREA.CARDFLAGS shift amount and direction
+WCF_N_ERROR	= 0	; SD card error
+WCF_L_LUNCHG	= 2	; LUN has changed software flag
+WCF_L_DEVCHG	= 4	; Device has changed software flag
+WCF_R_CRDVER	= 2	; Current card version
+
+
+
+ STRUCT CID
+MID		db	; Manufacturer ID
+OID		ds 2	; OEM ID
+PNM		ds 5	; Product Name
+PRV		db
+PSN		ds 4	; Product Serial Number
+RSVMDT		dw	; Reserved, Manufacturing date
+CRC		db	; b7=1, b6~b0 = CRC7 checksum
+ ENDS
+
 
 
 ;-----------------------------------------------------------------------------
@@ -140,9 +186,11 @@ REDCLK	= $01F5
 MSXVER	= $002D
 LINL40	= $F3AE		; Width
 LINLEN	= $F3B0
+TEMP3	= $F69D
 INTFLG	= $FC9B
 SCRMOD	= $FCAF
 EXPTBL	 =$FCC1
+
 
 
 ;-----------------------------------------------------------------------------
@@ -200,6 +248,12 @@ EIPARM	equ	08Bh
 
  ENDM
 
+ IFDEF DEBUG1
+ MACRO PRTSTR	string
+	call	PRTSTRCALL
+	ABYTEZ 0 string
+ ENDM
+ ENDIF
 
 ;-----------------------------------------------------------------------------
 ;
@@ -319,7 +373,7 @@ SING_DBL  equ     7820h ;"1-Single side / 2-Double side"
 ; It will be shown in the FDISK interface selection menu
 
 DRV_NAME:
-	db	"FBLabs SDHC"
+	db	"FBLabs SDXC"
 	ds	32-($-DRV_NAME)," "
 
 
@@ -400,14 +454,14 @@ DRV_TIMI:
 
 DRV_INIT:
 	or	a		; Is this the 1st call? 
-	jr	nz,.call2
+	jr	nz,.call2	; No, skip
 ; 1st call:
-	ld	hl,WRKAREA.TRLDIR ; size of work area needed for the Z80
 	ld	a,(MSXVER)
 	cp	3		; MSX Turbo-R?
 	ccf
+	ld	hl,0		; No extra space required
 	ret	nc		; No, return with Cy off
-	ld	hl,WRKAREA	; size of work area needed for the TR
+	ld	hl,R800DATHLP.end-R800DATHLP	; size of the extra work area needed for the TR
 	or	a		; Clear Cy
 	ret
 
@@ -425,25 +479,27 @@ DRV_INIT:
 .call2ini:
  ENDIF ; TURBOINIT
 	call	MYSETSCR		; Set the screen mode
-	call	pegaWorkArea		; IY=Work area pointer
+	call	getWorkArea		; IX=Work area pointer
 
-;	; Clear the work area
-	push	iy
+;	; Clear the rest of my SLTWRK area 
+	push	ix
 	pop	hl
-	ld	de,hl
-	inc	de
-	ld	bc,WRKAREA.TRLDIR
-	ld	(hl),0
-	ldir
-
+	inc	hl			; Skip the pointer to the additional work Area
+	inc	hl
+	xor	a
+	ld	b,6
+.loopclr:
+	ld	(hl),a
+	inc	hl
+	djnz	.loopclr
+	
 	ld	de,strTitle		; prints the title 
 	call	printString
 
-
-.sdhcinit:	; FBLabs SDHC Interface initialization
+.sdhcinit:	; FBLabs SDXC Interface initialization
 	call	.printmode		; Print the switches configuration
-	xor	a			; zera flags do cartao
-	ld	(iy+WRKAREA.CARDFLAGS), a
+	ld	a,$3C			; Initialize the card flags
+	ld	(ix+WRKAREA.CARDFLAGS), a
 
 	ld	a, 1			; detectar cartao 1
 	call	.detecta
@@ -459,7 +515,6 @@ DRV_INIT:
 	ld	de, strCrLf
  
 	call	printString
- IFDEF TURBOINIT
 .drv_init_end:
 	; ***Workaround for a bug in Nextor that causes it to freeze if
 	; CTRL+STOP was pressed on boot
@@ -470,6 +525,7 @@ DRV_INIT:
 	ld	(INTFLG),a	; Clear CTRL+STOP otherwise Nextor will freeze
 
 .restCPU:	; Restore the CPU if necessary
+ IFDEF TURBOINIT
 	ld	a,(CHGCPU)
 	cp	#C3		; IS CHGCPU present?
 	ret	nz
@@ -484,10 +540,10 @@ DRV_INIT:
 ;------- DRV_INIT aux routines ----------
 
 .detecta:
-	ld	(iy+WRKAREA.NUMSD), a	; Save the requested card slot
+	ld	(ix+WRKAREA.NUMSD), a	; Save the requested card slot
 	ld	de, strCartao
 	call	printString
-	ld	c, (iy+WRKAREA.NUMSD)
+	ld	c, (ix+WRKAREA.NUMSD)
 	ld	a,c
 	add	'0'
 	call	CHPUT
@@ -509,34 +565,47 @@ DRV_INIT:
 .naoVazio:
 	call	detectaCartao		; tem cartao no slot, inicializar e detectar
 	jr	nc,.detectou
-	call	disableSDs
-	ld	de, strNaoIdentificado
+	ld	de, strNaoDetectado
 	jp	printString
 ;.marcaErro:
 ;	jp	marcaErroCartao		; slot vazio ou erro de deteccao, marcar nas flags
 .detectou:
-	call	calculaCIDoffset	; calculamos em IX a posicao correta do offset CID dependendo do cartao atual
-	ld	a,(ix+15)	; pegar byte SDV1 ou SDV2
+	call	getCardVer
 	ld	de, strSDV1	; e imprimir
-	or	a
+;	or	a
 	jr	z,.pula1
 	ld	de, strSDV2
 .pula1:
 	call	printString
-	ld	a,'('
+
+	ld	de,CMD10*256+CID.MID	; Point to the Manufacturer ID
+	call	setCxDrd
+	ld	hl,SPIDATA
+	ld	c,(hl)		; c=Manufacturer ID
+
+	ld	b,18-1		; 16 data bytes and 2 response bytes -1 
+	call	flushCxD	; Flush the rest of the CID data
+
+	ld	a,c		; pegar byte do fabricante
+
+	ld	hl,TEMP3
+	call	HexToAscii
+	ld	a,(TEMP3)
 	call	CHPUT
-	ld	a,(ix)		; pegar byte do fabricante
-	call	printDecToAscii	; Imprimir Manufacturer ID
+	ld	a,(TEMP3+1)
+	call	CHPUT
+	ld	a,'h'
+	call	CHPUT
 	ld	a,')'
 	call	CHPUT
 	ld	a,' '
 	call	CHPUT
-	ld	a,(ix)		; pegar byte do fabricante
-	call	pegaFabricante	; achar nome do fabricante
-	ex	de,hl
+	ld	a,c		; pegar byte do fabricante
+	call	getMakerName	; de = Maker string 
 	call	printString	; e imprimir
 	ld	de,strCrLf
-	jp	printString
+	call	printString
+	jp	disableSDs
 
 
 .printmode:		; Print the two switches configuration
@@ -669,8 +738,14 @@ DRV_CONFIG:
 	jr	nz,.tryC2
 
 	; Config-1: Get number of drives at boot time
+
+	ld	a,6
+	call	SNSMAT
+	and	2		; Is CTRL being pressed?
+	ld	b,1
+	ld	a,0
+	ret	z		; Yes, ask for only 1 drive
 	ld	b,2
-	xor	a
 	ret
 
 .tryC2: cp	2
@@ -720,99 +795,103 @@ DRV_CONFIG:
 DEV_RW:
 	push	af
 	cp	3		; somente 2 dispositivos
-	jr	nc,.saicomerroidl
+	jr	nc,.errorIDEVL
 	dec	c		; somente 1 logical unit
-	jr	nz,.saicomerroidl
-	call	pegaWorkArea	; IY=Work area pointer
-	ld	(iy+WRKAREA.NUMSD),a
-	ld	(iy+WRKAREA.NUMBLOCKS),b	; save the number of blocks to transfer 
-	call	setaSDAtual
-	ld	a,(SPISTATUS)	; Get this card slot status
-	and	SD_M_PRESENT	; Is there a card present?
-	jr	z,.cardok	; Yes, skip
-	pop	af
-	ld	a, ENRDY	; Not ready
-	ld	b, 0
-	ret
-.saicomerroidl:
-	pop	af
-	ld	a, EIDEVL	; error: Invalid device or LUN 
-	ld	b, 0
-	ret
-.cardok:
-;	exx
-	push	de,hl
+	jr	nz,.errorIDEVL
+	call	getWorkArea	; IX=Work area pointer
 
-	call	SETLDIRHLPR	; hl'=Pointer to LDIR helper in RAM
-	call	calculaCIDoffset	; ix=CID offset 
-	ld	a,(ix+15)	; verificar se eh SDV1 ou SDV2
-	ld	ixl,a		; ixl=SDcard version
+	ld	(ix+WRKAREA.NUMBLOCKS),b	; save the number of blocks to transfer 
+	push	de,hl
+	call	slctNchkCard	; Select and check the card
+	ld	c,e		; c=error code
 	pop	hl,de
+	jr	c,.popQuitIniError
+	jr	nz,.cardOk
+
+.errorNRDY:
+	ld	c,ENRDY		; Not ready
+	jr	.popQuitIniError
+.errorDISK:
+	ld	c,EDISK		; Unknown disk error
+	jr	.popQuitIniError
+.errorIDEVL:
+	ld	c,EIDEVL	; error: Invalid device or LUN 
+.popQuitIniError:		; Pop and quit on initialization error
+	pop	af		; flush the stack
+	ld	a,c		; A=error code
+	ld	b,0		; 0 sectors r/w
+	ret
+
+.cardOk:
+	call	SETLDIRHLPR	; hl'=Pointer to LDIR helper in RAM
 	pop	af		; a=Device number, f=read/write flag 
-;	exx			; hl=Source/dest Address, de=Pointer to sect#
-;	ld	ixh, b 		; ixh=Number of blocks to transfer
-	jr	c,DEV_W	; Skip if it's a write operation 
+	jr	c,DEV_W		; Skip if it's a write operation 
 
 DEV_R:
-	ld	a, (de)		; 1. n. bloco
-	push	af
-	inc	de
-	ld	a, (de)		; 2. n. bloco
-	push	af
-	inc	de
-	ld	a, (de)		; 3. n. bloco
-	ld	c, a
-	inc	de
-	ld	a, (de)		; 4. n. bloco
-	inc	de
-	ld	b, a
-	pop	af
-	ld	d, a
-	pop	af		; HL = ponteiro destino
-	ld	e, a		; BC DE = 32 bits numero do bloco
-	call	LerBloco	; chamar rotina de leitura de dados
+ IFDEF DEBUG1
+	PRTSTR	"R11"
+ ENDIF
+	push	de
+	pop	iy
+	ld	e,(iy+0)	; BC:DE=sector number
+	ld	d,(iy+1)
+	ld	c,(iy+2)
+	ld	b,(iy+3)
+	call	LerBloco	; Low-level sector read
+ IFDEF DEBUG1
+	jp	nc,PRTSEMIC
+	ld	a,'e'
+	call	PRTCHAR
+ ELSE
 	ret	nc		; Return with A=0 if no error occurred
+ ENDIF
 	call	marcaErroCartao		; ocorreu erro, marcar nas flags
-	ld	a,(iy+WRKAREA.NUMBLOCKS) ; Get the number of requested blocks
-	sub	ixh		; subtract the number of remaining blocks
+	ld	a,(ix+WRKAREA.NUMBLOCKS) ; Get the number of requested blocks
+	sub	iyh		; subtract the number of remaining blocks
 	ld	b,a		; b=number of blocks written
-	ld	a, EDISK	; General unknown disk error
+	ld	a,e		; Get the error code
 	ret
 
 DEV_W:
+ IFDEF DEBUG1
+	ld	a,'W'
+	call	PRTCHAR
+ ENDIF
 	; Test if the card is write protected
 	ld	a,(SPISTATUS)	; Get this card slot status
 	and	SD_M_WRTPROT	; Is the card write protected?
 	jr	z,.ok
+ IFDEF DEBUG1
+	PRTSTR	"!p"
+ ENDIF
 	ld	a, EWPROT	; disco protegido
 	ld	b,0		; 0 blocks were written
-	ret
+	jp	disableSDs
 .ok:
-	ld	a, (de)		; 1. n. bloco
-	push	af
-	inc	de
-	ld	a, (de)		; 2. n. bloco
-	push	af
-	inc	de
-	ld	a, (de)		; 3. n. bloco
-	inc	de
-	ld	c, a
-	ld	a, (de)		; 4. n. bloco
-	inc	de
-	ld	b, a
-	pop	af
-	ld	d, a
-	pop	af		; HL = ponteiro destino
-	ld	e, a		; BC DE = 32 bits numero do bloco
-	call	GravarBloco	; chamar rotina de gravacao de dados
+ IFDEF DEBUG1
+	PRTSTR	"11"
+ ENDIF
+	push	de
+	pop	iy
+	ld	e,(iy+0)	; BC:DE=sector number
+	ld	d,(iy+1)
+	ld	c,(iy+2)
+	ld	b,(iy+3)
+	call	GravarBloco	; Low-level sector save
+ IFDEF DEBUG1
+	jp	nc,PRTSEMIC
+	ld	a,'e'
+	call	PRTCHAR
+ ELSE
 	ret	nc		; Return with A=0 if no error occurred
-
+ ENDIF
 	call	marcaErroCartao		; ocorreu erro, marcar nas flags
-	ld	a,(iy+WRKAREA.NUMBLOCKS) ; Get the number of requested blocks
-	sub	ixh		; subtract the number of remaining blocks
+	ld	a,(ix+WRKAREA.NUMBLOCKS) ; Get the number of requested blocks
+	sub	iyh		; subtract the number of remaining blocks
 	ld	b,a		; b=number of blocks written
-	ld	a,EWRERR	; Write error
+	ld	a,e		; Get the error code
 	ret
+
 
 ;-----------------------------------------------------------------------------
 ;
@@ -851,110 +930,200 @@ DEV_W:
 ; provided, not the leftmost.
 
 DEV_INFO:
-	cp	3		; somente 2 dispositivos
-	jr	c,.devok
+	or	a		; dev=0 isn't allowed
+	jr	z,.nodev
+	cp	3		; Max 2 devices 
+	jr	c,.devOk
+.nodev:
 	ld	a,1		; invalid device index
 	ret
-.devok:
-	call	pegaWorkArea	; IY=Work area pointer
-	ld	(iy+WRKAREA.NUMSD),a
-	call	setaSDAtual
+.devOk:
+ IFDEF DEBUG1
+	push	af
+	ld	a,'D'		; DEV_INFO debug ID
+	call	PRTCHAR
+	pop	af
+	push	af
+	add	'0'		; Device number
+	call	PRTCHAR
+	ld	a,b		; Info number
+	add	'0'
+	call	PRTCHAR
+	pop	af
+ ENDIF
+	call	getWorkArea	; IX=Work area pointer
 	inc	b
-	djnz	.naoBasic
+	djnz	.notBasicInfo
 
 ; Basic information:
+	push	hl
+	call	slctNchkCard	; Select and check the card
+	pop	hl
+	call	disableSDs
+ IFDEF DEBUG1
+	jr	nz,.hasCard
+	ld	a,'n'		; DEV_INFO return status: no card
+	call	PRTCHAR
+	ld	a,2
+	ret
+ ELSE
+	ld	a,2
+	ret	z		; No card: quit with "dev not available"
+ ENDIF
+ IFDEF DEBUG1
+.hasCard:
+	ld	a,'0'		; DEV_INFO return status: no card
+	call	PRTCHAR
+ ENDIF
 	ld	(hl),1		; 1 logical unit somente
 	inc	hl
 	xor	a
 	ld	(hl),a		; reservado, deve ser 0
 	ret			; retorna com A=0 (OK)
 
-.naoBasic:
-	push	hl,bc,af
-	call	DEV_STATUS	; We need to do this because SD cards are removable devices, not just
-				; removable media 
-	or	a		; Is this device available?
-	jr	nz,.getinfo	; Yes, get this device info
-	pop	af,bc,hl	; Flush the stack
-.noinfo:
+.notBasicInfo:
+	push	hl,bc
+	call	slctNchkCard	; Select and check the card
+	pop	bc,hl
+	jr	c,.cardError	; Card error? No info
+	jr	nz,.notBasicInfo2 ; Card present, get its info
+ IFDEF DEBUG1
+	ld	a,'n'		; DEV_INFO return status: no card
+	call	PRTCHAR
+ ELSE
+.cardError:
+.noInfo:
+ ENDIF
+	ld	a,2		; Quit with "Info not available" status
+	jp	disableSDs
+ IFDEF DEBUG1
+.cardError:
+	ld	a,'e'		; DEV_INFO return status: error 
+	call	PRTCHAR
 	ld	a,2		; Quit with "Info not available" status
 	ret
+.noInfo:
+	ld	a,'u'		; DEV_INFO return status: Uknown info 
+	call	PRTCHAR
+	ld	a,2		; Quit with "Info not available" status
+	jp	disableSDs
+ ENDIF
 
-.getinfo:
-	pop	af
-	call	calculaCIDoffset	; calculamos em IX a posicao correta do offset CID dependendo do cartao atual
-	pop	bc,hl
-	djnz	.naoManuf
+.notBasicInfo2:
+	djnz	.tryDevInfo
 ; Manufacturer Name:
-	push	hl		; salva ponteiro do buffer
-	ld	b, 64		; preenche buffer com espaco
-	ld	a, ' '
+	ld	de,CMD10*256+CID.MID	; Point to the Manufacturer ID
+	call	setCxDrd
+	jr	c,.noInfo
+	ex	de,hl		; de=Nextor buffer pointer
+	ld	hl,SPIDATA
+	ld	c,(hl)		; c=Manufacturer ID
+	ld	b,18-1-CID.MID
+	call	flushCxD	; Flush the rest of the CID data
+	call	disableSDs
+
+	ld	hl,de		; Save the Nextor buffer pointer 
+	ld	b,64		; Fill the buffer with spaces 
+	ld	a,' '
 .loop1:
-	ld	(hl), a
+	ld	(hl),a
 	inc	hl
 	djnz	.loop1
-	pop	hl		; hl=pointer to Nextor buffer 
-	ld	(hl),'('	; Place "(xx) " on the buffer
+	ex	de,hl		; hl=pointer to Nextor buffer 
+
+	ld	(hl),'('	; Place "(0xNN) " on the buffer
 	inc	hl
-	ld	a, (ix)		; byte do fabricante
-	call	DecToAscii
+	ld	(hl),'0'
+	inc	hl
+	ld	(hl),'x'
+	inc	hl
+	ld	a,c		; Get the Manufacturer ID
+	push	bc
+	call	HexToAscii
+	pop	bc
 	ld	(hl),')'
 	inc	hl
 	ld	(hl),' '
 	inc	hl
-	ld	a, (ix)		; byte do fabricante
-	ex	de,hl
-	call	pegaFabricante	; pegar nome do fabricante em HL
-	ldir			; e colocar no buffer
-	xor	a		; Return with A=0 (Ok)
-	ret
+	ld	a,c		; Get the Manufacturer ID
+	call	getMakerName	; de = Pointer to the Maker string 
 
-.naoManuf:
-	djnz	.naoProduct
-; Product Name:
-	push	hl		; guarda HL que aponta para buffer do Nextor
-	push	ix
-	pop	hl		; joga IX para HL
-	ld	de,3		; adiciona offset do productname em HL
-	add	hl, de
-	pop	de		; recupera buffer do Nextor em DE
-	ld	bc, 5		; 5 caracteres
-	ldir			; copia nome do produto
-	ex	de,hl		; troca DE com HL, agora HL aponta para Buffer do nextor atualizado
-	ld	b, 59		; Coloca espaco no restante do buffer
-	ld	a, ' '
+	; Copy the Maker name to the buffer
 .loop2:
-	ld	(hl), a
+	ld	a,(de)
+	ld	(hl),a
 	inc	hl
-	djnz	.loop2
+	inc	de
+	add	a,a
+	jr	nc,.loop2
+	dec	hl
+	res	7,(hl)		; Clear the bit7 of the last char
+ IFDEF DEBUG1
+	PRTSTR	"=0"
+ ENDIF
 	xor	a		; Return with A=0 (Ok)
 	ret
 
-.naoProduct:
-	djnz	.noinfo
+.tryDevInfo:
+	djnz	.trySerial
+; Device Name:
+	ld	de,CMD10*256+CID.PNM	; Point to the Product Name 
+	call	setCxDrd
+	jr	c,.noInfo
+	push	hl
+	ex	de,hl		; de=Nextor buffer pointer
+	ld	hl,SPIDATA
+	ld	bc,5		; 5 chars 
+	ldir			; copy the product name
+
+	ld	b,18-5-CID.PNM
+	call	flushCxD	; Flush the rest of the CID data
+	call	disableSDs
+
+	pop	hl		; Restore the original Nextor pointer
+	ld	b,5		; b=string size
+	call	STR_SANITIZE	; Sanitize the string before sending it to Nextor
+
+	ex	de,hl		; hl=current pointer to the Nextor Buffer 
+	ld	a,64
+	sub	b		; Fills the rest with spaces
+	ld	b,a
+	jr	.fillspaces
+
+.trySerial:
+	dec	b
+	jp	nz,.noInfo
 ; Serial Number:
 	ld	(hl),'0'	; Coloca prefixo "0x"
 	inc	hl
-	ld	(hl), 'x'
+	ld	(hl),'x'
 	inc	hl
-	push	hl		; guarda HL que aponta para buffer do Nextor
-	push	ix
-	pop	hl		; joga IX para HL
-	ld	de, 9		; adiciona offset do productname em HL
-	add	hl, de
-	pop	de		; recupera buffer do nextor em DE
-	ld	b, 4		; 4 bytes do serial
+
+	ld	de,CMD10*256+CID.PSN	; Point to the Product Serial # 
+	call	setCxDrd
+	jp	c,.noInfo
+
+	ld	b,4		; 4 bytes do serial
 .loop3:
-	ld	a,(hl)
+	ld	a,(SPIDATA)
 	call	HexToAscii	; converter HEXA para ASCII
-	inc	hl
 	djnz	.loop3
-	ld	b, 54		; Coloca espaco no restante
-	ld	a, ' '
+
+	ld	b,18-4-CID.PSN
+	call	flushCxD	; Flush the rest of the CID data
+	call	disableSDs
+
+	ex	de,hl		; hl=Current Nextor buffer position
+	ld	b,54		; Fill the rest with spaces 
+.fillspaces:
+	ld	a,' '
 .loop4:
-	ld	(de), a
-	inc	de
+	ld	(hl), a
+	inc	hl
 	djnz	.loop4
+ IFDEF DEBUG1
+	PRTSTR	"=0"
+ ENDIF
 	xor	a		; Return with A=0 (Ok)
 	ret
 
@@ -988,89 +1157,136 @@ DEV_INFO:
 ; DEV_STATUS itself. Please read the Driver Developer Guide for more info.
 
 DEV_STATUS:
-	ld	c,a		; c=Device number
+	ld	d,a		; d=Device number
 	cp	3		; 2 dispositivos somente
-	jr	nc,.nodev
+	jr	nc,.noDev
 	ld	a,b
 	or	a		; Device itself status?
-	jr	z,.devok	; I'm fine, thanks
+	jp	z,.devStatus	; I'm fine, thanks
 	dec	a		; Only LUN=1 are allowed
-	jr	nz,.nodev
- IFDEF DEBUG
-	push	af
+	jr	nz,.noLun
+;.getStatus:
+ IFDEF DEBUG1
 	ld	a,'S'		; DEV_STATUS debug ID
 	call	PRTCHAR
-	pop	af
-	push	af
+	ld	a,d
 	add	'0'		; Device number
 	call	PRTCHAR
-	pop	af
+	ld	a,'1'		; LUN number
+	call	PRTCHAR
  ENDIF
-	push	bc
-	ld	a,c
-	call	pegaWorkArea	; IY=Work area pointer
-	pop	bc
-	ld	(iy+WRKAREA.NUMSD),c	; salva numero do device atual (1 ou 2)
-	ld	a,c
-	ld	(SPICTRL), a	; selects SD
-	ld	a, (SPISTATUS)	; Get this card-slot status
+	call	getWorkArea	; IX=Work area pointer
+	ld	e,(ix+WRKAREA.CARDFLAGS) ; e=old LUN changed flags
+	ld	a,d
+	call	slctNchkCard	; Select and check the card
 	call	disableSDs
-	bit	SD_PRESENT,a	; Any card here?
-	jr	nz,.saicomerro	; Report that there's no card here
-	and	SD_M_DSKCHG	; Has the card changed since last time?
-	jr	nz,.detcard	; Yes, force a detection
-.tsterror:
-	ld	a, (iy+WRKAREA.CARDFLAGS)	; testar bit de erro do cartao nas flags
-	and	c		; Test against the card #
-	jr	z,.semMudanca	; cartao nao marcado com erro, pula
-.detcard:
-	call	detectaCartao	; erro na deteccao do cartao, tentar re-detectar
-	jr	c,.cartaoComErro	; nao conseguimos detectar, sai com erro
-	ld	a, (iy+WRKAREA.NUMSD)		; conseguimos detectar, tira erro nas flags
-	cpl			; inverte bits para fazer o AND
-	ld	c, a
-	ld	a, (iy+WRKAREA.CARDFLAGS)
-	and	c		; clear the error bit 
-	ld	(iy+WRKAREA.CARDFLAGS), a
-.comMudanca:
- IFDEF DEBUG
-	ld	a,'2'
-	call	PRTCHAR
+	jr	c,.cardError
+	jr	z,.noCard
+	cp	2		; Has the card just been changed?
+	jr	z,.cardChanged	; Yes, report it
+
+	; A=1: Card hasn't changed this time. Need to check if another
+	; routine has detected a change before	
+	ld	a,(ix+WRKAREA.CARDFLAGS)
+	or	e		; Mix with the previous flags
+	and	$0C		; Crop the LUN changed flags
+	rrca			; Adjust the flags position
+	rrca
+	and	(ix+WRKAREA.NUMSD) ; Crop the LUN changed flag for this card
+	jr	nz,.cardChanged	; The card had changed before, but Nextor was still unaware
+.notChanged:
+ IFDEF DEBUG1
+	PRTSTR	"=1"
  ENDIF
-	ld	a, 2		; informa ao Nextor que cartao esta OK e mudou
+	ld	a,1		; Card is available and has not changed
 	ret
-.semMudanca:
- IFDEF DEBUG
-	ld	a,'1'
-	call	PRTCHAR
+
+.cardChanged:
+	ld	a,(ix+WRKAREA.NUMSD) 
+.devChanged2:
+	add	a		; Adjust the flag position
+	add	a
+	cpl
+	and	(ix+WRKAREA.CARDFLAGS)	; Clear the LUN changed flag
+	ld	(ix+WRKAREA.CARDFLAGS),a
+ IFDEF DEBUG1
+	PRTSTR	"=2"
  ENDIF
-	ld	a, 1		; informa ao Nextor que cartao esta OK e nao mudou
+	ld	a,2		; Card LUN is present and has changed 
 	ret
-.cartaoComErro:
-	call	marcaErroCartao	; marcar erro do cartao nas flags
- IFDEF DEBUG
-	ld	a,'E'
-	call	PRTCHAR
-	xor	a
-	ret
- ENDIF
-.nodev:
- IFDEF DEBUG
-	ld	a,'s'
+.cardError:
+ IFDEF DEBUG1
+	ld	a,'e'
 	call	PRTCHAR
 	xor	a
 	ret
  ENDIF
-.saicomerro:
- IFDEF DEBUG
+ IFDEF DEBUG3
+.noLun:
+	inc	a
+.noDev:
+	PRTSTR "S!"
+	ld	e,a		; e=LUN
 	ld	a,'0'
+	add	d
+	call	PRTCHAR
+	ld	a,'0'
+	add	e
+	call	PRTCHAR
+	xor	a
+	ret
+ ELSE
+.noLun	equ	.devNotAvbl
+.noDev	equ	.devNotAvbl
+ ENDIF
+.noCard:
+ IFDEF DEBUG1
+	ld	a,'n'
 	call	PRTCHAR
  ENDIF
-	xor	a		; this device has an error 
+.devNotAvbl:
+	xor	a		; Device not available 
 	ret
-.devok:
-	ld	a,3
-	ret
+
+.devChanged:
+	ld	a,(ix+WRKAREA.NUMSD) 
+	add	a		; Adjust the flag position
+	add	a
+	jr	.devChanged2
+
+.devStatus:	; Device status has to be checked separately, otherwise
+		; FDISK won't notice card changes
+ IFDEF DEBUG1
+	ld	a,'S'		; DEV_STATUS debug ID
+	call	PRTCHAR
+	ld	a,d
+	add	'0'		; Device number
+	call	PRTCHAR
+	ld	a,'0'		; LUN number
+	call	PRTCHAR
+ ENDIF
+
+	call	getWorkArea	; IX=Work area pointer
+	ld	e,(ix+WRKAREA.CARDFLAGS) ; e=old LUN changed flags
+	ld	a,d
+	call	slctNchkCard
+	call	disableSDs
+	jr	c,.cardError
+	jr	z,.noCard
+	cp	2		; Has the card just been changed?
+	jr	z,.devChanged	; Yes, report it
+	; A=1: Card hasn't changed this time. Need to check if another
+	; routine has detected a change before	
+	ld	a,(ix+WRKAREA.CARDFLAGS)
+	or	e		; Mix with the previous flags
+	and	$30		; Crop the LUN changed flags
+	rrca			; Adjust the flags position
+	rrca
+	rrca
+	rrca
+	and	(ix+WRKAREA.NUMSD) ; Crop the LUN changed flag for this card
+	jr	nz,.devChanged	; The card had changed before, but Nextor was still unaware
+	jr	.notChanged
 
 
 ;-----------------------------------------------------------------------------
@@ -1108,35 +1324,37 @@ DEV_STATUS:
 ; For other types of device, these fields must be zero.
 
 LUN_INFO:
-	cp	3		; somente 2 dispositivo
-	jr	nc,.saicomerro
-	dec	b		; somente 1 logical unit
-	jr	nz,.saicomerro
+	or	a		; DEV=0 is invalid
+	jr	z,.noDev
+	cp	3		; Max 2 devices
+	jr	nc,.noDev
+	dec	b		; Only LUN=1 
+	jr	nz,.noLun
 
- IFDEF DEBUG
+ IFDEF DEBUG1
 	push	af
-	ld	a,'L'		; LUN_INFO debug ID
+	ld	a,'L'
 	call	PRTCHAR
 	pop	af
 	push	af
 	add	'0'		; Print the device number
 	call	PRTCHAR
-	pop	af
- ENDIF
-
-	push	af,hl
-	inc	b		; b=LUN=1
-	call	DEV_STATUS	; Is there a card present? 
-	pop	hl
-	or	a
-	jr	nz,.ok		; device is available
-	pop	af
-.nomedia:
- IFDEF DEBUG
-	push	af
-	ld	a,'N'
+	ld	a,b
+	add	'1'
 	call	PRTCHAR
 	pop	af
+ ENDIF
+	push	hl
+	call	getWorkArea	; IX=Work area pointer
+	call	slctNchkCard	; Select and check the card
+	pop	hl
+	or	a
+	jr	c,.cardError1	; Card error? Abort
+	jr	nz,.devOk	; device is available
+.noMedia:
+ IFDEF DEBUG1
+	ld	a,'n'		; LIN_INFO status: no media
+	call	PRTCHAR
  ENDIF
 	xor	a
 	ld	b,7
@@ -1146,16 +1364,39 @@ LUN_INFO:
 	djnz	.nmloop		; Fill the rest with "0=information not available"
 	jr	.wflagsnCHS	; Fill the rest of the info about the device
 
-.ok:
- IFDEF DEBUG
-	ld	a,'P'
+ IFDEF DEBUG1
+.cardError1:
+	ld	a,'e'		; LUN_INFO status: Card error
 	call	PRTCHAR
+	xor	a
+	ld	b,7
+	jr	.nmloop
+.cardError2:
+	ld	a,'e'		; LUN_INFO status: Card error
+	call	PRTCHAR
+	jr	.quitError
+ ELSE
+.cardError1	equ	.noMedia
+.cardError2	equ	.quitError
  ENDIF
 
-	pop	af
-	push	hl
-	call	calculaBLOCOSoffset	; calcular em IX e HL o offset correto do buffer que armazena total de blocos
-	pop	hl		; do cartao dependendo do cartao atual solicitado
+ IFDEF DEBUG3
+.noLun:	inc	b
+.noDev:
+	PRTSTR	'L!'
+	add	'0'
+	call	PRTCHAR
+	ld	a,b
+	add	'0'
+	call	PRTCHAR
+	ld	a,1
+	ret
+ ELSE
+.noLun	equ	.quitError:
+.noDev	equ	.quitError:
+ ENDIF
+
+.devOk:
 	xor	a
 	ld	(hl),a		; 0 = block device 
 	inc	hl
@@ -1163,17 +1404,46 @@ LUN_INFO:
 	inc	hl
 	ld	(hl),2		; Block size msb = 512
 	inc	hl
-	ld	a, (ix)		; copia numero de blocos total
-	ld	(hl), a
+
+	ld	de,CMD9*256+0	; Read the CSD
+	call	setCxDrd
+	jr	c,.cardError2
+
+	ex	de,hl		; de=LUN_INFO buffer+3
+	ld	hl,SPIDATA
+
+	ld	c,(hl)		; c=CSD byte 0
+
+	ld	b,4
+.skipCSDheader:
+	ld	a,(hl)
+	djnz	.skipCSDheader	
+
+	ld	a,c
+	and	$C0		; Crop the CSD version ID
+	jr	z,.calculaCSD1
+	cp	$40
+	jr	z,.calculaCSD2
+
+	ld	b,18-5
+	call	flushCxD	; Flush the rest of the CID data
+;	jr	.quitError	; Unknown CSD version 
+
+.quitError:
+	ld	a,1		; Return with A=1: Error
+	jp	disableSDs
+
+
+.savenblocks:
+	pop	hl
+	ld	(hl),e
 	inc	hl
-	ld	a, (ix+1)
-	ld	(hl), a
+	ld	(hl),d
 	inc	hl
-	ld	a, (ix+2)
-	ld	(hl), a
+	ld	(hl),c
 	inc	hl
-	ld	(hl), 0		; cartoes SD tem total de blocos em 24 bits, mas o Nextor pede numero de
-	inc	hl 		; 32 bits, entao coloca 0 no MSB
+	ld	(hl),b
+	inc	hl
 
 .wflagsnCHS:
 	ld	(hl),1		; flags: dispositivo R/W removivel
@@ -1184,214 +1454,70 @@ LUN_INFO:
 	ld	(hl), a
 	inc	hl
 	ld	(hl), a
-	ret			; Return with A-0: Ok, filled the buffer
-
-.saicomerro:
-	ld	a, 1		; Return with A=1: Error
-	ret
-
-
-;=====
-;=====  END of DEVICE-BASED specific routines
-;=====
-
-;------------------------------------------------
-; Rotinas auxiliares
-;------------------------------------------------
-
-;------------------------------------------------
-; Pedir ao Nextor o ponteiro de dados de trabalho
-; na RAM e colocar em HL e IY
-; Output: 
-; IY = WorkArea pointer
-; Modifies: IX
-;------------------------------------------------
-pegaWorkArea:
-	push	af,hl
-	xor	a		; Pegar endereco da area de trabalho
-	ex	af,af'
+ IFDEF DEBUG1
+	PRTSTR	"=0"
 	xor	a
-	ld	ix, GWORK
-	call	CALBNK
-	ld	l,(ix)		; em HL tem o ponteiro da nossa area da RAM
-	ld	h,(ix+1)
-	push	hl
-	pop	iy		; em IY temos o mesmo ponteiro
-	pop	hl,af
-	ret
-
-;------------------------------------------------
-; Marcar bit de erro nas flags
-; Destroi AF, C
-;------------------------------------------------
-marcaErroCartao:
-	ld	c, (iy+WRKAREA.NUMSD)		; cartao atual (1 ou 2)
-	ld	a, (iy+WRKAREA.CARDFLAGS)	; marcar erro
-	or	c
-	ld	(iy+WRKAREA.CARDFLAGS), a
-	ret
-
-;------------------------------------------------
-; Testar se cartao atual esta protegido contra
-; gravacao, A=0 se protegido
-; Destroi AF, C
-;------------------------------------------------
-testaWP:
-	ld	a, (iy+WRKAREA.NUMSD)	; cartao atual (1 ou 2)
-	ld	(SPICTRL), a
-	ld	a, (SPISTATUS)	; testar se cartao esta protegido
-;	call	disableSDs
-	and	$04
-	ret			; se A for 0 cartao esta protegido
-
-;------------------------------------------------
-; Calcula offset do buffer na RAM em HL e IX para
-; os dados do CID dependendo do cartao atual
-; Destroi AF, DE, HL e IX
-;------------------------------------------------
-calculaCIDoffset:
-	push	iy		; copiamos IY para HL
-	pop	hl
-	ld	d, 0
-	ld	e, WRKAREA.BCID1	; DE aponta para buffer BCID1
-	ld	a, (iy+WRKAREA.NUMSD)	; vamos fazer IX apontar para o buffer correto
-	dec	a		; dependendo do cartao: BCID1 ou BCID2
-	jr	z,.c1
-	ld	e, WRKAREA.BCID2	; DE aponta para buffer BCID2
-.c1:
-	add	hl, de		; HL aponta para buffer correto
-	push	hl		
-	pop	ix		; vamos colocar HL em IX
-	ret
-
-;------------------------------------------------
-; Calcula offset do buffer na RAM para os dados
-; do total de blocos dependendo do cartao atual
-; Offset fica em HL e IX
-; Destroi AF, DE, HL e IX
-;------------------------------------------------
-calculaBLOCOSoffset:
-	push	iy		; copiamos IY para HL
-	pop	hl
-	ld	d, 0
-	ld	e, WRKAREA.BLOCKS1	; DE aponta para buffer BLOCKS1
-	ld	a, (iy+WRKAREA.NUMSD)	; Vamos fazer IX apontar para o buffer correto
-	dec	a		; dependendo do cartao: BLOCKS1 ou BLOCKS2
-	jr	z,.c1
-	ld	e, WRKAREA.BLOCKS2	; DE aponta para buffer BLOCKS2
-.c1:
-	add	hl, de		; HL aponta para buffer correto
-	push	hl		
-	pop	ix		; Vamos colocar HL em IX
-	ret
-
-
-;------------------------------------------------
-; Minhas funcoes para cartao SD
-;------------------------------------------------
-
-;------------------------------------------------
-; Processo de inicializacao e deteccao do cartao.
-; Detecta se cartao responde, qual versao (SDV1
-; ou SDV2), faz a leitura do CSD e CID e calcula
-; o numero de blocos do cartao, colocando o CID
-; e total de blocos no buffer correto dependendo
-; do cartao 1 ou 2.
-; Retorna erro no carry. Se for 0 indica deteccao
-; com sucesso.
-; Destroi todos os registradores
-;------------------------------------------------
-detectaCartao:
-	call	iniciaSD	; manda pulsos de clock e comandos iniciais
-	ret	c			; retorna se erro
-	call	testaSDCV2	; tenta inicializar um cartao SDV2
-	ret	c
-	push	iy		; colocar em HL buffer da RAM de trabalho
-	pop	hl		; CSD esta no offset 0, nao precisamos somar
-	ld	a, CMD9		; ler CSD
-	call	lerBlocoCxD
-	ret	c
-	call	calculaCIDoffset	; calculamos em IX e HL a posicao correta do offset CID dependendo do cartao atual
-	ld	a, CMD10	; ler CID
-	call	lerBlocoCxD
-	ret	c
-	ld	a, CMD58	; ler OCR
-	ld	de, 0
-	call	SD_SEND_CMD_2_ARGS_GET_R3	; enviar comando e receber resposta tipo R3
-	ret	c
-	ld	a, b		; testa bit CCS do OCR que informa se cartao eh SDV1 ou SDV2
-	and	$40
-	ld	(ix+15), a	; salva informacao da versao do SD (V1 ou V2) no byte 15 do CID
-	call	z,mudarTamanhoBlocoPara512	; se bit CCS do OCR for 1, eh cartao SDV2 (Block address - SDHC ou SDXD)
-	ret	c		; e nao precisamos mudar tamanho do bloco para 512
-	call	disableSDs
-				; agora vamos calcular o total de blocos dependendo dos dados do CSD
-	call	calculaBLOCOSoffset	; calcular em IX e HL o offset correto do buffer que armazena total de blocos
-	push	iy		; copiamos IY para HL
-	pop	hl
-	ld	d, 0
-	ld	e, WRKAREA.BCSD+5
-	add	hl, de		; HL aponta para buffer BCSD+5
-	ld	a, (iy+WRKAREA.BCSD)
-	and	$C0		; testa versao do registro CSD
-	jr	z,.calculaCSD1
-	cp	$40
-	jr	z,.calculaCSD2
-	scf			; versao do registro CSD nao reconhecida, informa erro na deteccao
-	ret
+ ENDIF
+	jp	disableSDs	; Return with A-0: Ok, filled the buffer
 
 ; -----------------------------------
-; Registro CSD versao 1, calcular da
-; maneira correta para a versao 1
+; Calculate the number of blocks from
+; a CSD version 1
+; Input   : none
+; Output  : c:de = Number of blocks
+; Modifies: af, b
 ; -----------------------------------
 .calculaCSD1:
-	ld	a, (hl)
+	push	de		; save the current Nextor buffer pointer
+	ld	a,(hl)
 	and	$0F		; isola READ_BL_LEN
 	push	af
-	inc	hl
-	ld	a, (hl)		; 2 primeiros bits de C_SIZE
+;	inc	hl
+	ld	a,(hl)		; 2 primeiros bits de C_SIZE
 	and	3
-	ld	d, a
-	inc	hl
-	ld	e, (hl)		; 8 bits de C_SIZE (DE contem os primeiros 10 bits de C_SIZE)
-	inc	hl
-	ld	a, (hl)
+	ld	d,a
+;	inc	hl
+	ld	e,(hl)		; 8 bits de C_SIZE (DE contem os primeiros 10 bits de C_SIZE)
+;	inc	hl
+	ld	a,(hl)
 	and	$C0		; 2 ultimos bits de C_SIZE
-	add	a, a		; rotaciona a esquerda
+	add	a		; rotaciona a esquerda
 	rl	e		; rotaciona para DE
 	rl	d
-	add	a, a		; mais uma rotacao
+	add	a		; mais uma rotacao
 	rl	e		; rotaciona para DE
 	rl	d
 	inc	de		; agora DE contem todos os 12 bits de C_SIZE, incrementa 1
-	inc	hl
-	ld	a, (hl)		; proximo byte
+;	inc	hl
+	ld	a,(hl)		; proximo byte
 	and	3		; 2 bits de C_SIZE_MUL
 	ld	b, a		; B contem os 2 bits de C_SIZE_MUL
-	inc	hl						
-	ld	a, (hl)		; proximo byte
+;	inc	hl						
+	ld	a,(hl)		; proximo byte
 	and	$80		; 1 bit de C_SIZE_MUL
-	add	a, a		; rotaciona para esquerda jogando no carry
+	add	a		; rotaciona para esquerda jogando no carry
 	rl	b		; rotaciona para B
 	inc	b		; agora B contem os 3 bits de C_SIZE_MUL
 	inc	b		; faz B = C_SIZE_MUL + 2
 	pop	af		; volta em A o READ_BL_LEN
-	add	a, b		; A = READ_BL_LEN + (C_SIZE_MUL+2)
+	add	b		; A = READ_BL_LEN + (C_SIZE_MUL+2)
 	ld	bc, 0
 	call	.eleva2
-	ld	e, d		; aqui temos 32 bits (BC DE) com o tamanho do cartao
-	ld	d, c		; ignoramos os 8 ultimos bits em E, fazemos BC DE => 0B CD (divide por 256)
-	ld	c, b
-	ld	b, 0
+	ld	e,d		; aqui temos 32 bits (BC DE) com o tamanho do cartao
+	ld	d,c		; ignoramos os 8 ultimos bits em E, fazemos BC DE => 0B CD (divide por 256)
+	ld	c,b
+;	ld	b,0
 	srl	c		; rotacionamos a direita o C, carry = LSB (divide por 2)
 	rr	d		; rotacionamos D e E
 	rr	e		; no final BC DE contem tamanho do cartao / 512 = numero de blocos
-.salvaBlocos:
-	ld	(ix+2), c	; colocar no buffer BLOCOS correto a quantidade de blocos
-	ld	(ix+1), d	; que o cartao (1 ou 2) tem
-	ld	(ix), e
-	xor	a		; limpa carry
-	ret
+
+	ld	b,18-5-6
+	call	flushCxD	; Flush the rest of the CSD data
+
+	ld	b,0 		; SD cards return a 24bit number for 
+ 				; the number of blocks so we have to clear the
+				; Nextor upper byte
+	jr	.savenblocks
 
 .eleva2:			; aqui temos: A = (READ_BL_LEN + (C_SIZE_MUL+2))
 				; BC = 0
@@ -1404,24 +1530,37 @@ detectaCartao:
 	jr	nz,.eleva2
 	ret			; em BC DE temos o tamanho do cartao (bytes) em 32 bits
 
+
 ; -----------------------------------
-; Registro CSD versao 2, calcular da
-; maneira correta para a versao 2
+; Calculate the number of blocks from
+; a CSD version 2
+; Input   : none
+; Output  : c:de = Number of blocks
+; Modifies: af, b
 ; -----------------------------------
 .calculaCSD2:
-	inc	hl		; HL ja aponta para BCSD+5, fazer HL apontar para BCSD+7
-	inc	hl
-	ld	a, (hl)
+	push	de		; save the current Nextor buffer pointer
+;	inc	hl		; HL ja aponta para BCSD+5, fazer HL apontar para BCSD+7
+;	inc	hl
+	ld	a,(hl)		; Discard 2 bytes
+	ld	a,(hl)
+
+	ld	a,(hl)
 	and	$3F
-	ld	c, a
-	inc	hl
-	ld	d, (hl)
-	inc	hl
-	ld	e, (hl)
+	ld	c,a
+;	inc	hl
+	ld	d,(hl)
+;	inc	hl
+	ld	e,(hl)
 	call	.inc32		; soma 1
 	call	.desloca32	; multiplica por 512
 	call	.rotaciona24	; multiplica por 2
-	jp		.salvaBlocos
+
+	push	bc
+	ld	b,18-5-5
+	call	flushCxD	; Flush the rest of the CSD data
+	pop	bc		; SDHC/SDXC cards have a 32bit size
+	jp	.savenblocks
 
 .inc32:
 	inc	e
@@ -1444,34 +1583,262 @@ detectaCartao:
 	rl	b
 	ret
 
+
+
+
+;=====
+;=====  END of DEVICE-BASED specific routines
+;=====
+
+;------------------------------------------------
+; Rotinas auxiliares
+;------------------------------------------------
+
+;------------------------------------------------
+; Get the SLTWRK pointer 
+; Output: 
+;           IX = SLTWRK pointer
+; Modifies: AF'
+;------------------------------------------------
+getWorkArea:
+	push	af
+	xor	a		; A=0: GWORK current slot
+	ex	af,af'
+	xor	a		; A=0: BANK0 
+	ld	ix,GWORK
+	call	CALBNK
+	pop	af
+	ret
+
+;------------------------------------------------
+; Marcar bit de erro nas flags
+; Destroi AF, C
+;------------------------------------------------
+marcaErroCartao:
+	ld	c, (ix+WRKAREA.NUMSD)		; cartao atual (1 ou 2)
+	ld	a, (ix+WRKAREA.CARDFLAGS)	; marcar erro
+	or	c
+	ld	(ix+WRKAREA.CARDFLAGS), a
+	ret
+
+;------------------------------------------------
+; Testar se cartao atual esta protegido contra
+; gravacao, A=0 se protegido
+; Destroi AF, C
+;------------------------------------------------
+testaWP:
+	ld	a, (ix+WRKAREA.NUMSD)	; cartao atual (1 ou 2)
+	ld	(SPICTRL), a
+	ld	a, (SPISTATUS)	; testar se cartao esta protegido
+;	call	disableSDs
+	and	$04
+	ret			; se A for 0 cartao esta protegido
+
+
+
+;------------------------------------------------
+; Minhas funcoes para cartao SD
+;------------------------------------------------
+
+;------------------------------------------------
+; Processo de inicializacao e deteccao do cartao.
+; Detecta se cartao responde, qual versao (SDV1
+; ou SDV2), faz a leitura do CSD e CID e calcula
+; o numero de blocos do cartao, colocando o CID
+; e total de blocos no buffer correto dependendo
+; do cartao 1 ou 2.
+; Retorna erro no carry. Se for 0 indica deteccao
+; com sucesso.
+; Destroi todos os registradores
+; Input   : (ix+WRKAREA.NUMSD)
+; Output  : (ix+WRKAREA.CARDFLAGS)
+;           Cy set in case of error
+;           E=DEV_RW error code in case of error
+; Modifies: AF, BC, DE, HL
+;------------------------------------------------
+detectaCartao:
+ IFDEF DEBUG1
+	PRTSTR	"<detect card "
+	ld	a,(ix+WRKAREA.NUMSD)
+	add	'0'
+	call	PRTCHAR
+	PRTSTR	" v"
+ ENDIF
+	call	iniciaSD		; Initialize this SD card
+	ld	e,ENRDY
+	jp	c,.quitError		; This card has an error: quit
+	call	detSDversion		; Check if this is a V2 card
+ IFDEF DEBUG1
+	push	af
+	add	'0'
+	call	PRTCHAR
+	pop	af
+ ENDIF
+	jr	c,.incompCardV2		; Incompatible card
+	ld	a,CMD58			; Read OCR
+	ld	de,0
+	call	SD_SEND_CMD_2_ARGS_GET_R3
+	jr	c,.incompCardCMD58	; Incompatible card
+
+	; Set the card version on WRKAREA.CARDFLAGS
+	ld	a,(ix+WRKAREA.NUMSD)
+	rrca				; Adjust the bits position
+	rrca
+	ld	e,a			; e=b7,b6: Card number normal mask
+	cpl
+	ld	c,a			; c=b7,b6: Card number reverse mask
+	ld	a,b			; Get the part of the OCR we need 
+	and	$40			; Crop the card version bit
+	bit	7,e			; Is the card-2 slot selected?
+	jr	z,.saveSDver		; No, skip
+	add	a			; Adjust the version bit position
+.saveSDver:
+	ld	b,a			; b=card version flag for this card slot
+	ld	a,(ix+WRKAREA.CARDFLAGS)
+	and	c			; Clear the previous version flag
+	or	b
+	ld	(ix+WRKAREA.CARDFLAGS),a
+	and	e			; Is this card V1?
+	call	z,mudarTamanhoBlocoPara512	; Yes, set the block size to 512
+	jr	c,.incompCardBlk512		; Incompatible card
+
+	; Set the rest of the WRKAREA.CARDFLAGS
+	ld	a,(ix+WRKAREA.NUMSD)
+	ld	c,a			; c=Card OR mask
+	cpl
+	ld	b,a			; b=Card AND mask
+	ld	a,(ix+WRKAREA.CARDFLAGS)
+	and	b			; Clear the error flag
+	sla	c			; Adjust to the flag position
+	sla	c
+	or	c			; Flag that LUN has changed
+	sla	c			; Adjust to the flag position
+	sla	c
+	or	c			; Flag that DEV has changed
+	ld	(ix+WRKAREA.CARDFLAGS),a
+ IFDEF DEBUG1
+	PRTSTR	" ok>"
+ ENDIF
+	ret
+
+ IFNDEF DEBUG1
+.incompCardV2:			; Incompatible card v2 error
+.incompCardCMD58:		; Incompatible card CMD58 error
+.incompCardBlk512:		; Incompatible card setBlk512 error
+	ld	e,ENCOMP
+ ELSE
+.incompCardV2:			; Incompatible card v2 error
+	PRTSTR	" iv2>"
+	ld	e,ENCOMP
+	jr	.quitError2
+.incompCardCMD58:		; Incompatible card CMD58 error
+	PRTSTR	" icmd58>"
+	ld	e,ENCOMP
+	jr	.quitError2
+.incompCardBlk512:		; Incompatible card setBlk512 error
+	PRTSTR	" iblk512>"
+	ld	e,ENCOMP
+	jr	.quitError2
+ ENDIF
+
+.quitError:
+ IFDEF DEBUG1
+	PRTSTR	" e>"
+.quitError2:
+ ENDIF
+	call	disableSDs
+	ld	a,(ix+WRKAREA.CARDFLAGS)
+	or	(ix+WRKAREA.NUMSD)	; Flag that this card has an error
+	scf
+	ret
+
+
+
+
 ; ------------------------------------------------
 ; Setar o tamanho do bloco para 512 se o cartao
 ; for SDV1
 ; ------------------------------------------------
 mudarTamanhoBlocoPara512:
+ IFDEF DEBUG2
+	PRTSTR	"<setBlk512>"
+ ENDIF
 	ld	a, CMD16
 	ld	bc, 0
 	ld	de, 512
 	jp	SD_SEND_CMD_GET_ERROR
 
 ; ------------------------------------------------
-; Tenta inicializar um cartao SDV2, se houver erro
-; o cartao deve ser SDV1
+; Detects the SD card version 
+; Output: A=Card version
+;           0: Unknown
+;           1: SD V1
+;           2: SD V2
+;           3: MMC V3
+;         Cy set on error
 ; ------------------------------------------------
-testaSDCV2:
+detSDversion:
+ IFDEF DEBUG2
+	PRTSTR	"<detSDversion"
+ ENDIF
 	ld	a, CMD8
 	ld	de, $1AA
 	call	SD_SEND_CMD_2_ARGS_GET_R3
-	ld	hl, SD_SEND_CMD1	; HL aponta para rotina correta
-	jr	c,.pula		; cartao recusou CMD8, enviar comando CMD1
-	ld	hl, SD_SEND_ACMD41	; cartao aceitou CMD8, enviar comando ACMD41
-.pula:
-	ld	bc, 20		; B = 0, C = 20: 5120 tentativas
+	jr	c,.v1Card
+	ld	a,d
+	and	1
+	ld	d,a
+	ld	hl,$1AA
+	sbc	hl,de			; Lower 12-bit were 1AAh?
+ IFDEF DEBUG2
+	ld	a,0
+	jr	nz,.incompat
+ ELSE
+	scf
+	ret	nz			; No, quit with error
+ ENDIF
+;.v2Card:
+	ld	hl,SD_SEND_ACMD41
+	call	.init
+	ld	a,2
+ IFDEF DEBUG2
+	jr	c,.incompat
+	PRTSTR	" 2>"
+ ENDIF
+	ret				; SD V2, if nc
+
+
+.v1Card:
+	ld	hl,SD_SEND_ACMD41
+	call	.init
+	ld	a,1
+ IFDEF DEBUG2
+	jr	c,.v3MMC
+	PRTSTR	" 1>"
+	ret
+ ELSE
+	ret	nc			; SD V1, if ACMD41 was accepted
+ ENDIF
+
+.v3MMC:
+	ld	hl,SD_SEND_CMD1
+	call	.init
+	ld	a,3
+ IFDEF DEBUG2
+	jr	c,.incompat
+	PRTSTR	" 3>"
+ ELSE
+	ret				; MMC V3, if nc
+ ENDIF
+
+
+.init:
+	ld	bc,#0014		; 5120 tentativas
 .loop:
 	push	bc
 	call	.jumpHL		; chamar rotina correta em HL
 	pop	bc
-	ret	nc
+	ret	z
 	djnz	.loop
 	dec	c
 	jr	nz,.loop
@@ -1480,49 +1847,90 @@ testaSDCV2:
 .jumpHL:
 	jp	(hl)		; chamar rotina correta em HL
 
+
+
+ IFDEF DEBUG2
+.incompat:
+	push	af
+	push	af
+	ld	a,' '
+	call	PRTCHAR
+	pop	af
+	add	'0'
+	call	PRTCHAR
+	pop	af
+	PRTSTR	"e>"
+	scf
+	ret
+ ENDIF
+
+
 ; ------------------------------------------------
-; Ler registro CID ou CSD, o comando vem em A
+; Reads the CxD (CID, CSD) and skips data until it points
+; to the requested field
+; Input   : D=SD command
+;           E=requested CID field
+; Modifies: AF, BC, DE
 ; ------------------------------------------------
-lerBlocoCxD:
+setCxDrd:
+;	call	setaSDAtual
+	push	de
+	ld	a,d	; get SD command
 	call	SD_SEND_CMD_NO_ARGS
+	pop	de
 	ret	c
 	call	WAIT_RESP_FE
 	ret	c
-	ex	de,hl
 
-	; Check for a Z80 or R800
-;	or 	a		; Clear Cy
-	ld	a,20
-	db	#ED,#F9		; mulub a,a
-	ld	hl, SPIDATA
-	jr	c,.r800		; Use LDIR for R800
-	.16	ldi	; 16 vezes o opcode LDI
-.end:	ld	a, (hl)
-	ld	a, (hl)		; byte de resposta
+	ld	a,e
 	or	a
-	ex	de,hl
-;	jr	disableSDs
+	ret	z
+	ld	b,e
+.skipfields:
+	ld	a,(SPIDATA)
+	djnz	.skipfields
 	ret
 
-.r800:
-	ld	bc,16
-	ldir
-	jr	.end
+
+; ------------------------------------------------
+; Flush the rest of the CxD (CID, CSD) data
+; and disable the SD card slots
+; Input   : B=Number of bytes to flush 
+; Modifies: A
+; ------------------------------------------------
+flushCxD:
+	ld	a,(SPIDATA)
+	djnz	flushCxD
+	jp	disableSDs
+
+
+
+
 
 ; ------------------------------------------------
 ; Algoritmo para inicializar um cartao SD
 ; Destroi AF, B, DE
 ; ------------------------------------------------
 iniciaSD:
+	ld	a, (ix+WRKAREA.NUMSD)
+	ld	(SPICTRL), a
 	call	disableSDs
 
-	ld	b, 10		; enviar 80 pulsos de clock com cartao desabilitado
+	ld	b,10		; enviar 80 pulsos de clock com cartao desabilitado
+	ld	a,$FF		; manter MOSI em 1
 enviaClocksInicio:
-	ld	a, $FF		; manter MOSI em 1
 	ld	(SPIDATA), a
 	djnz	enviaClocksInicio
-	call	setaSDAtual	; ativar cartao atual
-	ld	b, 8		; 8 tentativas para CMD0
+;	call	setaSDAtual	; ativar cartao atual
+;	jp	c,disableSDs	; Quit on error
+
+	ld	a, (SPIDATA)		; Dummy read
+	ld	a, (ix+WRKAREA.NUMSD)
+	ld	(SPICTRL), a
+
+;	call	disableSDs
+
+	ld	b,8		; 8 tentativas para CMD0
 SD_SEND_CMD0:
 	ld	a, CMD0		; primeiro comando: CMD0
 	ld	de, 0
@@ -1532,7 +1940,7 @@ SD_SEND_CMD0:
 	ret	nc			; retorna se cartao respondeu ao CMD0
 	djnz	SD_SEND_CMD0
 	scf			; cartao nao respondeu ao CMD0, informar erro
-	; fall throw
+	; fall through
 
 ; ------------------------------------------------
 ; Desabilitar (de-selecionar) todos os cartoes
@@ -1542,44 +1950,55 @@ disableSDs:
 	push	af
 	xor	a
 	ld	(SPICTRL), a
+	ld	a,$FF
+	ld	(SPIDATA), a		; Dummy write to release DO
 	pop	af
+	ret
+
+
+; ------------------------------------------------
+; Get the selected card version
+; Input   : (WRKAREA.NUMSD)
+; Output  : A=Card version (0=V1, NZ=V2)
+;         : Flag Z will be updated accordingly
+; Modifies: none
+; ------------------------------------------------
+getCardVer:
+	ld	a,(ix+WRKAREA.CARDFLAGS)
+	rlca				; Adjust the flag position
+	rlca
+	and	(ix+WRKAREA.NUMSD)	; Crop this card version
 	ret
 
 ; ------------------------------------------------
 ; Enviar comando ACMD41
 ; ------------------------------------------------
 SD_SEND_ACMD41:
-	ld	a, CMD55
+	ld	a,CMD55
 	call	SD_SEND_CMD_NO_ARGS
-	ld	a, ACMD41
-	ld	bc, $4000
-	ld	d, c
-	ld	e, c
-	jr		SD_SEND_CMD_GET_ERROR
+	ld	a,ACMD41
+	ld	bc,$4000
+	ld	d,c
+	ld	e,c
+	jr	SD_SEND_CMD_GET_ERROR
 
 ; ------------------------------------------------
 ; Enviar CMD1 para cartao. Carry indica erro
 ; Destroi AF, BC, DE
 ; ------------------------------------------------
 SD_SEND_CMD1:
-	ld	a, CMD1
+	ld	a,CMD1
 SD_SEND_CMD_NO_ARGS:
-	ld	bc, 0
-	ld	d, b
-	ld	e, c
-SD_SEND_CMD_GET_ERROR:
+	ld	bc,0
+	ld	d,b
+	ld	e,c
+SD_SEND_CMD_GET_ERROR:		; Send command with BC:DE as its parameter
 	call	SD_SEND_CMD
 	or	a
 	ret	z			; se A=0 nao houve erro, retornar
-	; fall throw
-
-; ------------------------------------------------
-; Informar erro
-; Nao destroi registradores
-; ------------------------------------------------
 setaErro:
 	scf
-	jr		disableSDs
+	jr	disableSDs
 
 ; ------------------------------------------------
 ; Enviar comando em A com 2 bytes de parametros
@@ -1588,23 +2007,23 @@ setaErro:
 ; Destroi AF, BC
 ; ------------------------------------------------
 SD_SEND_CMD_2_ARGS_TEST_BUSY:
-	ld	bc, 0
+	ld	bc,0
 	call	SD_SEND_CMD
 	ld	b, a
-	and	$FE		; testar bit 0 (flag BUSY)
+	and	$FE		; Test all error flags except on bit0 
 	ld	a, b
-	jr	nz,setaErro	; BUSY em 1, informar erro
-	ret			; sem erros
+	jr	nz,setaErro	; Abort if there are any errors 
+	ret
 
 ; ------------------------------------------------
 ; Enviar comando em A com 2 bytes de parametros
 ; em DE e ler resposta do tipo R3 em BC DE
 ; Retorna em A a resposta do cartao
 ; Destroi AF, BC, DE, HL
+; Output: BC:DE return code
 ; ------------------------------------------------
 SD_SEND_CMD_2_ARGS_GET_R3:
 	call	SD_SEND_CMD_2_ARGS_TEST_BUSY
-	ret	c
 	push	af
 	call	WAIT_RESP_NO_FF
 	ld	h, a
@@ -1619,15 +2038,17 @@ SD_SEND_CMD_2_ARGS_GET_R3:
 	pop	af
 	ret
 
+
 ; ------------------------------------------------
 ; Enviar comando em A com 4 bytes de parametros
-; em BC DE e enviar CRC correto se for CMD0 ou 
+; em BC:DE e enviar CRC correto se for CMD0 ou 
 ; CMD8 e aguardar processamento do cartao
 ; Output  : A=0 if there was no error
 ; Modifies:  AF, B, AF'
 ; ------------------------------------------------
 SD_SEND_CMD:
-	call	setaSDAtual
+	call	setaSDAtual	; Setlect the card and wait for ready 
+	ret	c		; Abort on error
 	ld	(SPIDATA), a
 	push	af
 	ld	a, b
@@ -1640,31 +2061,49 @@ SD_SEND_CMD:
 	ld	(SPIDATA), a
 	pop	af
 	cp	CMD0
-	ld	b, $95		; CRC para CMD0
-	jr	z,enviaCRC
+	ld	b,$95		; CMD0 CRC
+	jr	z,.enviaCRC
 	cp	CMD8
-	ld	b, $87		; CRC para CMD8
-	jr	z,enviaCRC
-	ld	b, $FF		; CRC dummy
-enviaCRC:
-	ld	a, b
-	ld	(SPIDATA), a
+	ld	b,$87		; CMD8 CRC
+	jr	z,.enviaCRC
+
+	; Disabled these checksums because they caused problems
+	; with some SDV1 cards. It's said that some Toshiba cards
+	; need them, but I don't have any to test.
+	; In case this need to be enabled someday, probably the best
+	; approach will be to send the appropriate ACMD41 checksum to
+	; the respective card version
+;	cp	CMD55
+;	ld	b,$65		; CMD55 CRC
+;	jr	z,.enviaCRC
+;	cp	ACMD41
+;	ld	b,$77		; ACMD41 CRC  (E5h for non-SDHC/SDXC cards)
+;	jr	z,.enviaCRC
+	ld	b, $FF		; dummy CRC
+.enviaCRC:
+	ld	a,b
+	ld	(SPIDATA),a
 	jr	WAIT_RESP_NO_FF
+
 
 ; ------------------------------------------------
 ; Esperar que resposta do cartao seja $FE
 ; Destroi AF, B
 ; ------------------------------------------------
 WAIT_RESP_FE:
-	ld	b, 10		; 10 tentativas
+	ld	b,0		; 256 tentativas
 .loop:
-	push	bc
-	call	WAIT_RESP_NO_FF	; esperar resposta diferente de $FF
-	pop	bc
+	ld	a,(SPIDATA)
 	cp	$FE		; resposta é $FE ?
 	ret	z		; sim, retornamos com carry=0
+	ex	(sp),hl
+	ex	(sp),hl
+	ex	(sp),hl
+	ex	(sp),hl
 	djnz	.loop
-	scf			; erro, carry=1
+.timeout:
+	xor	a		; No error flags and Cy set = timeout
+	scf
 	ret
 
 ; ------------------------------------------------
@@ -1673,14 +2112,14 @@ WAIT_RESP_FE:
 ; Destroi AF, BC
 ; ------------------------------------------------
 WAIT_RESP_NO_FF:
-	ld	bc, 1		; 256 tentativas
+	ld	b,0		; 256 retries
 .loop:
-	ld	a, (SPIDATA)
-	cp	$FF		; testa $FF
-	ret	nz		; sai se nao for $FF
+	ld	a,(SPIDATA)
+	cp	$FF		; A=$FF?	
+	ccf
+	ret	nc		; No, quit
 	djnz	.loop
-	dec	c
-	jr	nz,.loop
+	scf			; Error: timeout
 	ret
 
 ; ------------------------------------------------
@@ -1693,84 +2132,60 @@ WAIT_RESP_NO_00:
 .loop:
 	ld	a, (SPIDATA)
 	or	a
-	ret	nz			; se resposta for <> $00, sai
+	ret	nz		; se resposta for <> $00, sai
 	djnz	.loop
 	dec	c
 	jr	nz,.loop
-	scf			; erro
+	xor	a		; No error flags and Cy set = timeout
+	scf
 	ret
 
 ; ------------------------------------------------
-; Sets the requested card slot and check its status
-; In case it detects that the card was changed, it will call the detection
-; routine to re-dectect the card type
+; Sets the requested card slot
 ; Input: Target card slot
 ; Output: Cy = No SD card is present
 ;         A: 0=The same card is still present
 ;            1=The card was changed since the last check
 ; ------------------------------------------------
 setaSDAtual:
-	push	af
-	ld	a, (SPIDATA)	; dummy read
-	ld	a, (iy+WRKAREA.NUMSD)
+	push	af,bc
+;	ld	a, (SPIDATA)		; Dummy read
+	ld	a, (ix+WRKAREA.NUMSD)
 	ld	(SPICTRL), a
+
+	call	WAIT_RESP_NO_00
+	pop	bc
+	jr	c,.error
 	pop	af
+	or	a		; Clear Cy
 	ret
 
- IFDEF BLA
-	ld	a, (SPIDATA)	; dummy read
-	ld	a, (iy+WRKAREA.NUMSD)
-;	cpl			; invert bits
-;	and	3
-	ld	(SPICTRL), a
-	;
-	ld	a,(SPISTATUS)	; Get this card slot status
-	bit	SD_PRESENT,a	; Is there a card present?
+.error: pop	af		; Flush the stack
+	xor	a		; No error flags and Cy set = timeout
 	scf
-	ret	nz		; No, return with error
-
-	; ***Workaround for the problem that Nextor doesn't call DEV_STATUS to
-	; check if the media has changed before every disk operation, so we
-	; need to always check if it changed.
-	and	SD_M_DSKCHG	; Was the card changed since last checked?
-	ret	z		; No, return
-	push	bc,de,hl,ix
-	call	detectaCartao	; Detect the new card
-	pop	ix,hl,de,bc
-	ret	c		; Error? Then return
-	ld	a,1
 	ret
- ENDIF ; BLA
+
+
 
 ; ------------------------------------------------
 ; Grava um bloco de 512 bytes no cartao
 ; HL = aponta para o inicio dos dados
 ; BC:DE = contem o numero do bloco (BCDE = 32 bits)
-; IXH = Number of blocks
-; IXL = SDcard version (0 or 1)
 ; Modifies:  AF, BC, DE, HL, IXL
 ; ------------------------------------------------
 GravarBloco:
- IFDEF DEBUG
-	push	af
-	ld	a,'G'
-	call	PRTCHAR
-	pop	af
- ENDIF
-;	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
-	ld	a,ixl
-	or	a
+	call	getCardVer
 	call	z,blocoParaByte		; se for SDV1 coverter blocos para bytes
 ;	call	setaSDAtual	; selecionar cartao atual
-	ld	a, (iy+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
-	ld	ixh,a		; ixh=Number of blocks
+	ld	a, (ix+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
+	ld	iyh,a		; iyh=Number of blocks
 	dec	a
 	jp	z,.umBloco	; somente um bloco, gravar usando CMD24
 
 ; multiplos blocos
- IFDEF DEBUG
+ IFDEF DEBUG1
 	push	af
-	ld	a,'M'
+	ld	a,'m'
 	call	PRTCHAR
 	pop	af
  ENDIF
@@ -1781,65 +2196,67 @@ GravarBloco:
 	ld	a, ACMD23
 	ld	bc, 0
 	ld	d, c
-	ld	e, (iy+WRKAREA.NUMBLOCKS)	; parametro = total de blocos a gravar
+	ld	e, (ix+WRKAREA.NUMBLOCKS)	; parametro = total de blocos a gravar
 	call	SD_SEND_CMD_GET_ERROR
 	pop	de
 	pop	bc
-	jp	c,terminaLeituraEscritaBloco	; erro no ACMD23
- IFDEF DEBUG
+	jp	c,BLKRWERROR	; erro no ACMD23
+ IFDEF DEBUG1
 	call	PRTDOT
  ENDIF
 	ld	a, CMD25	; comando CMD25 = write multiple blocks
 	call	SD_SEND_CMD_GET_ERROR
-	jp	c,terminaLeituraEscritaBloco	; erro
- IFDEF DEBUG
+	jp	c,BLKRWERROR	; erro
+ IFDEF DEBUG1
 	call	PRTDOT
  ENDIF
 .loop:
- IFDEF DEBUG
-	call	PRTDASH
- ENDIF
 	ld	a, $FC		; mandar $FC para indicar que os proximos dados sao
 	ld	(SPIDATA),a	; dados para gravacao
 
 	ld	de,SPIDATA
 	call	RUN_HLPR
 
-	ld	(SPIDATA),de
-;	ld	a,$FF		; envia dummy CRC
-;	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
-;	ld	(SPIDATA),a
+	ld	a,$FF		; envia dummy CRC
+	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
+	ld	(SPIDATA),a
 	call	WAIT_RESP_NO_FF	; esperar cartao
+ IFDEF DEBUG1
+	jp	c,BLKRWERROR.timeout
+ ELSE
+	jr	c,BLKRWERROR.timeout
+ ENDIF
 	and	$1F		; testa bits erro
 	cp	5
 	scf
-	jp	nz,terminaLeituraEscritaBloco	; resposta errada, informar erro
+	jr	nz,BLKRWERROR	; resposta errada, informar erro
 	call	WAIT_RESP_NO_00	; esperar cartao
-	jp	c,terminaLeituraEscritaBloco
-	dec	ixh		; Next block
+	jr	c,BLKRWERROR
+ IFDEF DEBUG1
+	call	PRTDASH
+ ENDIF
+	dec	iyh		; Next block
 	jp	nz,.loop
 
-	ld	a, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
-	ld	a, (SPIDATA)
+	ld	hl, (SPIDATA)	; acabou os blocos, fazer 2 dummy reads
 	ld	a, $FD		; enviar $FD para informar ao cartao que acabou os dados
 	ld	(SPIDATA),a
-	ld	a,(SPIDATA)	; 2 dummy reads
-	ld	a,(SPIDATA)
-	call	WAIT_RESP_NO_00	; esperar cartao
-	jp	.fim		; CMD25 concluido, sair informando nenhum erro
+	ld	hl,(SPIDATA)	; 2 dummy reads
+;	call	WAIT_RESP_NO_00	; esperar cartao
+	jr	.end		; CMD25 finished without error 
 
 .umBloco:
- IFDEF DEBUG
+ IFDEF DEBUG1
 	push	af
-	ld	a,'S'
+	ld	a,'s'
 	call	PRTCHAR
 	pop	af
  ENDIF
 	ld	a, CMD24	; gravar somente um bloco com comando CMD24 = Write Single Block
 	call	SD_SEND_CMD_GET_ERROR
-	jp	c,terminaLeituraEscritaBloco	; erro
+	jr	c,BLKRWERROR	; erro
 
- IFDEF DEBUG
+ IFDEF DEBUG1
 	call	PRTDOT
  ENDIF
 	ld	a, $FE		; mandar $FE para indicar que vamos mandar dados para gravacao
@@ -1848,95 +2265,190 @@ GravarBloco:
 	ld	de,SPIDATA
 	call	RUN_HLPR
 
-	ld	(SPIDATA),de
-;	ld	a,$FF		; envia dummy CRC
-;	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
-;	ld	(SPIDATA),a
+	ld	a,$FF		; envia dummy CRC
+	ld	(SPIDATA),a	; Can't be done with ld (SPIDATA),de. It's too fast
+	ld	(SPIDATA),a
 
 	call	WAIT_RESP_NO_FF	; esperar cartao
+	jr	c,BLKRWERROR.timeout
 	and	$1F		; testa bits erro
 	cp	5
 	scf
-	jp	nz,terminaLeituraEscritaBloco	; resposta errada, informar erro
-.esp:
-	call	WAIT_RESP_NO_FF	; esperar cartao
-	or	a
-	jr	z,.esp
-.fim:
-	xor	a		; zera carry e informa nenhum erro
-terminaLeituraEscritaBloco:
-;	push	af
-	call	disableSDs	; desabilitar todos os cartoes
-;	pop	af
-	ret
+	jr	nz,BLKRWERROR	; resposta errada, informar erro
+;	call	WAIT_RESP_NO_00	; esperar cartao
+.end:
+	xor	a		; No errors to report
+	jp	disableSDs
+
+
+
+BLKRWERROR:	; Block R/W error
+	push	af
+	ld	a,CMD12		; Abort the current command 
+	call	SD_SEND_CMD_NO_ARGS
+	pop	af
+	rrca			; In idle state?
+	ld	e,ENRDY
+	ret	c
+	rrca			; Erase reset?
+	ld	e,EWRERR
+	ret	c
+	rrca			; Illegal command?
+	ld	e,ENCOMP
+	ret	c
+	rrca			; Communication CRC error?
+	ld	e,EDATA
+	ret	c
+	rrca			; Erase sequence error?
+	ld	e,EWRERR
+	ret	c
+	rrca			; Address error?
+	ld	e,ESEEK
+	ret	c
+	rrca			; Parameter error?
+	ld	e,ERNF
+	ret	c
+.timeout:
+ IFDEF DEBUG1
+	ld	a,'t'
+	call	PRTCHAR
+ ENDIF
+	ld	e,ENRDY		; Timeout error
+	scf
+	jp	disableSDs
 
 
 ; ------------------------------------------------
 ; Ler um bloco de 512 bytes do cartao
 ; HL =  aponta para o inicio dos dados
 ; BC:DE = contem o numero do bloco (BCDE = 32 bits)
-; IXH = Number of blocks
-; IXL = SDcard version (0 or 1)
 ; Destroi AF, BC, DE, HL, IXL
 ; ------------------------------------------------
 LerBloco:
-;	ld	a, (ix+15)	; verificar se eh SDV1 ou SDV2
-	ld	a,ixl
-	or	a
+	call	getCardVer
 	call	z,blocoParaByte	; se for SDV1 coverter blocos para bytes
 ;	call	setaSDAtual
 
-	ld	a, (iy+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
-	ld	ixh,a		; ixh=Number of blocks
+	ld	a, (ix+WRKAREA.NUMBLOCKS)	; Get the number of blocka 
+	ld	iyh,a		; iyh=Number of blocks
 	dec	a
 	jp	z,.umBloco	; only one block
 
 ; multiplos blocos
+ IFDEF DEBUG2
+	ld	a,'m'
+	call	PRTCHAR
+ ENDIF
 	ld	a, CMD18	; ler multiplos blocos com CMD18 = Read Multiple Blocks
 	call	SD_SEND_CMD_GET_ERROR
-	jp	c,terminaLeituraEscritaBloco
+	jr	c,BLKRWERROR
 	ex	de,hl		; de=Destination address
 .loop:
 	call	WAIT_RESP_FE
-	jp	c,terminaLeituraEscritaBloco
+	jr	c,BLKRWERROR
 
-	ld	hl, SPIDATA
+	ld	hl,SPIDATA
 	call	RUN_HLPR
-
-	ld	hl, (SPIDATA)	; descarta CRC
-;	ld	a, (SPIDATA)
-;	ld	a, (SPIDATA)
-	dec	ixh
+	ld	hl,(SPIDATA)	; descarta CRC
+ IFDEF DEBUG2
+	call	PRTDOT
+ ENDIF
+	dec	iyh
 	jp	nz,.loop
 	ld	a, CMD12	; acabou os blocos, mandar CMD12 para cancelar leitura
 	call	SD_SEND_CMD_NO_ARGS
-	jp	.fim
+	jr	.end
 
 .umBloco:
+ IFDEF DEBUG2
+	ld	a,'s'
+	call	PRTCHAR
+ ENDIF
 	ld	a, CMD17	; ler somente um bloco com CMD17 = Read Single Block
 	call	SD_SEND_CMD_GET_ERROR
-	jp	c,terminaLeituraEscritaBloco
+	jr	c,BLKRWERROR
 
 	call	WAIT_RESP_FE
-	jp	c,terminaLeituraEscritaBloco
+	jr	c,BLKRWERROR
 	ex	de,hl
 
-	ld	hl, SPIDATA
+	ld	hl,SPIDATA
 	call	RUN_HLPR
-
 	ld	hl, (SPIDATA)	; descarta CRC
-;	ld	a, (SPIDATA)
-;	ld	a, (SPIDATA)
-.fim:
-	xor	a		; zera carry para informar leitura sem erros
-	jp	terminaLeituraEscritaBloco
+ IFDEF DEBUG2
+	call	PRTDOT
+ ENDIF
 
+.end:	xor	a		; No errors to report
+	jp	disableSDs
+
+
+
+
+; ------------------------------------------------
+; Selects a card slot, check for the hardware card change flag
+; and, if it changed, calls the detection of the new card
+;
+; Obs: It was done this way for software robustness.
+; This way we don't have to rely that Nextor will
+; behave in any expected way, like calling DEV_STATUS
+; before any disk operation.
+; 
+; Input   : A = Card slot (1 or 2)
+; Output  : Cy set in case of a defective card
+;           A = 0: No card is present (Z is also set)
+;               1: A card is present and has not changed since the last check 
+;               2: A card is present and has changed since the last check 
+;           E = DEV_RW error code in case of error
+; Modifies:  BC, DE, HL
+
+
+; ------------------------------------------------
+slctNchkCard:
+	; Sanity check
+	cp	3
+	jr	nc,.nocard
+	and	a
+	jr	z,.nocard
+	;
+	ld	(ix+WRKAREA.NUMSD),a
+	call	setaSDAtual
+	ret	c
+
+	ld	a,(SPISTATUS)		; Get this card-slot status
+	bit	SD_PRESENT,a		; Any card here?
+	jr	nz,.nocard		; Report that there's no card here
+	and	SD_M_DSKCHG		; Has the card changed since last time?
+	jr	nz,.cardChanged		; Card has changed, detect it
+.tsterror:
+	ld	a,(ix+WRKAREA.CARDFLAGS) ; check if this card had an error
+	and	(ix+WRKAREA.NUMSD)
+	call	nz,detectaCartao	; Card had error, force re-detection
+	ld	a,1			; A=1: same card
+	jp	c,disableSDs		; Quit on error
+;.sameCard:
+	or	a			; Set NZ
+	ret
+
+.cardChanged:
+	call	detectaCartao		; Detect the new card 
+	ld	a,2			; A=2: card changed
+	jp	c,disableSDs		; Quit on error
+	or	a			; Set NZ
+	ret
+
+.nocard:
+	xor	a
+	jp	disableSDs
 
 ; ------------------------------------------------
 ; Converte blocos para bytes. Na pratica faz
 ; BC DE = (BC DE) * 512
 ; ------------------------------------------------
 blocoParaByte:
+ IFDEF DEBUG2
+	PRTSTR "<Blk2Byte>"
+ ENDIF
 	ld	b, c
 	ld	c, d
 	ld	d, e
@@ -1952,63 +2464,27 @@ blocoParaByte:
 
 
 ; ------------------------------------------------
-; Imprime string na tela apontada por DE
-; Destroi todos os registradores
-; ------------------------------------------------
 printString:
-	ld	a, (de)
-	or	a
-	ret	z
+; Prints an ASCII string that has the last bit7 set
+; Input   : DE = Pointer to the string
+; Modifies: AF, DE, EI 
+; ------------------------------------------------
+	ld	a,(de)
+	rlca
+	rrca
+	res	7,a
 	call	CHPUT
+	ret	c
 	inc	de
 	jr	printString
 
 
 ; ------------------------------------------------
-; Converte o byte em A para string em decimal no
-; buffer apontado por hl
-; Destroi AF, BC, HL, DE
-; Output: hl=pointer to the end of the buffer
-; ------------------------------------------------
-DecToAscii:
-	ex	de,hl		; de=pointer to buffer
-	ld	h, 0
-	ld	l, a		; copiar A para HL
-	ld	(iy+WRKAREA.TEMP),1	; flag para indicar que devemos cortar os zeros a esquerda
-	ld	bc, -100	; centenas
-	call	.num1
-	ld	c, -10		; dezenas
-	call	.num1
-	ld	(iy+WRKAREA.TEMP),2	; unidade deve exibir 0 se for zero e nao corta-lo
-	ld	c, -1		; unidades
-	call	.num1
-	ex	de,hl
-	ret
-
-.num1:
-	ld	a, '0'-1
-.num2:
-	inc	a		; contar o valor em ascii de '0' a '9'
-	add	hl, bc		; somar com negativo
-	jr	c,.num2		; ainda nao zeramos
-	sbc	hl, bc		; retoma valor original
-	dec	(iy+WRKAREA.TEMP)	; se flag do corte do zero indicar para nao cortar, pula
-	jr	nz,.naozero
-	cp	'0'		; devemos cortar os zeros a esquerda. Eh zero?
-	jr	nz,.naozero
-	inc	(iy+WRKAREA.TEMP)	; se for zero, nao salvamos e voltamos a flag
-	ret
-.naozero:
-	ld	(de), a		; eh zero ou eh outro numero, salvar
-	inc	de		; incrementa ponteiro de destino
-	ret
-
-; ------------------------------------------------
-; Converte o byte em A para string em hexa no
-; buffer apontado por DE
-; Destroi AF, C, DE
-; ------------------------------------------------
 HexToAscii:
+; Converts the byte in A to a text string in hexa
+; on the buffer pointed by HL
+; Modifies: AF, C, HL
+; ------------------------------------------------
 	ld	c, a
 	rra
 	rra
@@ -2018,127 +2494,132 @@ HexToAscii:
 	ld  	a, c
 .conv:
 	and	$0F
-	add	a, $90
+	add	$90
 	daa
-	adc	a, $40
+	adc	$40
 	daa
-	ld	(de), a
-	inc	de
+	ld	(hl),a
+	inc	hl
 	ret
 
 ; ------------------------------------------------
-; Converte o byte em A para string em decimal e
-; imprime na tela
-; Destroi AF, BC, HL, DE
+; Get the Maker Name from the Maker ID
+; Output: DE = Pointer to Manufacturer name
 ; ------------------------------------------------
-printDecToAscii:
-	ld	h, 0
-	ld	l, a		; copiar A para HL
-	ld	b, 1		; flag para indicar que devemos cortar os zeros a esquerda
-	ld	de, -100	; centenas
-	call	.num1
-	ld	e, -10		; dezenas
-	call	.num1
-	ld	b, 2		; unidade deve exibir 0 se for zero e nao corta-lo
-	ld	e, -1		; unidades
-.num1:
-	ld	a, '0'-1
-.num2:
-	inc	a		; contar o valor em ascii de '0' a '9'
-	add	hl, de		; somar com negativo
-	jr	c,.num2		; ainda nao zeramos
-	sbc	hl, de		; retoma valor original
-	djnz	.naozero	; se flag do corte do zero indicar para nao cortar, pula
-	cp	'0'		; devemos cortar os zeros a esquerda. Eh zero?
-	jr	nz,.naozero
-	inc	b		; se for zero, nao imprimimos e voltamos a flag
-	ret
-.naozero:
-;	push	hl		; nao eh zero ou eh outro numero, imprimir
-;	push	bc
-;	call	CHPUT
-;	pop	bc
-;	pop	hl
-;	ret
-	jp	CHPUT
-
-; ------------------------------------------------
-; Procura pelo nome do fabricante em uma tabela.
-; A contem o byte do fabricante
-; Devolve HL apontando para o buffer do fabricante
-; e BC com o comprimento do texto
-; Destroi AF, BC, HL
-; ------------------------------------------------
-pegaFabricante:
-	ld	c, a
-	ld	hl, tblFabricantes
-
-.loop:
-	ld	a, (hl)
-	inc	hl
-	cp	c
-	jr	z,.achado
-	or	a
-	jr	z,.achado
-	push	bc
-	call	.achado
-	add	hl, bc
-	inc	hl
-	pop	bc
-	jr	.loop
-
-.achado:
-	ld	c, 0
+getMakerName:
+; IF (tblMakerIndex-tblMakerIndex.end < 512)
+	cp	(tblMakerIndex.end-tblMakerIndex)/2+1	; > last ID?
+	jr	nc,.Unknown		; Yes->Unknown maker
+; ENDIF
 	push	hl
-	xor	a
-.loop2:
-	inc	c
+	ld	l,a
+	ld	h,0
+	ld	de,tblMakerIndex
+	add	hl,hl
+	add	hl,de
+	ld	e,(hl)
 	inc	hl
-	cp	(hl)
-	jr	nz,.loop2
+	ld	d,(hl)
 	pop	hl
-	ld	b, 0
 	ret
 
-tblFabricantes:
-	db	1
-	db	"Panasonic",0
-	db	2
-	db	"Toshiba",0
-	db	3
-	db	"SanDisk",0
-	db	4
-	db	"SMI-S",0
-	db	6
-	db	"Renesas",0
-	db	17
-	db	"Dane-Elec",0
-	db	19
-	db	"KingMax",0
-	db	21
-	db	"Samsung",0
-	db	24
-	db	"Infineon",0
-	db	26
-	db	"PQI",0
-	db	27
-	db	"Sony",0
-	db	28
-	db	"Transcend",0
-	db	29
-	db	"A-DATA",0
-	db	31
-	db	"SiliconPower",0
-	db	39
-	db	"Verbatim",0
-	db	65
-	db	"OKI",0
-	db	115
-	db	"SilverHT",0
-	db	137
-	db	"L.Data",0
-	db	0
-	db	"Generico",0
+; IF (tblMakerIndex-tblMakerIndex.end < 512)
+.Unknown:
+	ld	de,tblMakerNames.idUkn
+	ret
+; ENDIF
+
+
+tblMakerIndex:
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx01
+	dw	tblMakerNames.idx02
+	dw	tblMakerNames.idx03
+	dw	tblMakerNames.idx04
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx06
+ REPT $10-$06
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx11
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx13
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx18
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx1A
+	dw	tblMakerNames.idx1B
+	dw	tblMakerNames.idx1C
+	dw	tblMakerNames.idx1D
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx1F
+ REPT $26-$1F
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx27
+	dw	tblMakerNames.idx28
+ REPT $30-$28
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx31
+ REPT $40-$31
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx41
+ REPT $72-$41
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx73
+	dw	tblMakerNames.idx74
+	dw	tblMakerNames.idUkn
+	dw	tblMakerNames.idx76
+ REPT $81-$76
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx82
+ REPT $88-$82
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx89
+ REPT $9B-$89
+	dw	tblMakerNames.idUkn
+ ENDR
+	dw	tblMakerNames.idx9C
+	dw	tblMakerNames.end
+.end:
+
+
+
+tblMakerNames:
+.idUkn:	ABYTEC 0 	"Unknown"
+.idx01:	ABYTEC 0 	"Panasonic"
+.idx02:	ABYTEC 0 	"Toshiba"
+.idx03: ABYTEC 0 	"SanDisk"
+.idx04: ABYTEC 0 	"SMI-S"
+.idx06: ABYTEC 0 	"Renesas"
+.idx11: ABYTEC 0 	"Dane-Elec"
+.idx13: ABYTEC 0 	"KingMax"
+.idx18: ABYTEC 0 	"Infineon"
+.idx1A: ABYTEC 0 	"PQI"
+.idx1B: ABYTEC 0 	"Samsung"
+.idx1C: ABYTEC 0 	"Transcend"
+.idx1D: ABYTEC 0 	"ADATA"
+.idx1F: ABYTEC 0 	"SiliconPower"
+.idx27: ABYTEC 0 	"Phison"
+.idx28: ABYTEC 0 	"Lexar"
+.idx31: ABYTEC 0 	"Silicon Power"
+.idx41: ABYTEC 0 	"Kingston"
+.idx73: ABYTEC 0 	"SilverHT"
+.idx74: ABYTEC 0 	"Transcend"
+.idx76: ABYTEC 0 	"Patriot"
+.idx82: ABYTEC 0 	"Sony"
+.idx89: ABYTEC 0 	"L.Data"
+.idx9C: ABYTEC 0 	"Angelbird"
+.end:
+
 
 
 ; ------------------------------------------------
@@ -2171,10 +2652,10 @@ MYSETSCR:
 	inc	c
 	ld 	ix,REDCLK
 	call	EXTROM
-	add	a,a
-	add	a,a
-	add	a,a
-	add	a,a
+	add	a
+	add	a
+	add	a
+	add	a
 	or	b
 	ld	b,a
 	ld	a,(LINLEN)
@@ -2236,11 +2717,51 @@ INICHKSTOP:
 	jp	printString
 
 
+; ------------------------------------------------
+STR_SANITIZE:
+; Sanitize a string before it is sent to Nextor
+; Input   : HL = Pointer to the string
+;            B = string size
+; Output  :  B = string size
+;         : DE = Pointer to the end of the buffer
+; Modifies:  A, C
+; ------------------------------------------------
+	ld	c,0			; Flag to test if the string only has spaces
+	push	bc,hl
+.loop1:
+	ld	a,(hl)
+	cp	32
+	jr	z,.next
+	ld	c,1
+	call	c,.invChar
+	cp	127
+	call	nc,.invChar
+.next:	inc	hl
+	djnz	.loop1
+	pop	hl
+	ld	a,c
+	pop	bc
+	or	a			; Has chars other than only spaces?
+	ret	nz			; Yes, quit
+	; Copy <null> to the buffer
+	push	de
+	ex	de,hl			; de=Pointer to the string
+	ld	hl,nullTxt
+	ld	bc,nullTxt.end-nullTxt
+	ldir
+	pop	bc			; Discard the old pointe position
+	ld	b,nullTxt.end-nullTxt
+	ret
+
+.invChar:				; Replace an invalid char
+	ld	(hl),'_'
+	ret
+
 
 ; ------------------------------------------------
-; Install the R800 data transfer helper routine on WorkArea 
-; ------------------------------------------------
 INSTR800HLP:
+; Install the R800 data transfer helper routine on extra WorkArea 
+; ------------------------------------------------
 	ld	a,(MSXVER)
 	cp	3		; MSX Turbo-R?
 	ret	c		; No, return
@@ -2253,7 +2774,7 @@ INSTR800HLP:
 	ret
 
 ; ------------------------------------------------
-; R800 optimized data transfer routine, copied to the WorkArea
+; R800 optimized data transfer routine, copied to the extra WorkArea
 ; ------------------------------------------------
 R800DATHLP:
 	exx
@@ -2290,46 +2811,54 @@ SETLDIRHLPR:
 	xor	a		; Clear Cy
 	dec	a		; A=#FF
 	db	#ED,#F9		; mulub a,a
-	jr	c,.useLDIR	; Always use LDIR in RAM for the R800
+	jr	c,GTR800LDIR	; Always use LDIR in RAM for the R800
 
 	ld	hl,LDI512
 	exx
 	ret
 
-.useLDIR:
-	exx
-	; ***Continues on GTR800LDIR
-
 ; ------------------------------------------------
 ; Obtain the pointer to the R800 data transfer helper routine
-; Input   : IY=Pointer to the WorkArea
-; Output  : HL=pointer to R800 data transfer helper routine 
-; Modifies: DE
-;	    - Does an exx at the end
+; Input   : IX=Pointer to the WorkArea on SLTWRK
+; Output  : HL'=pointer to R800 data transfer helper routine 
+; Modifies: Does an exx at the end
 ; ------------------------------------------------
 GTR800LDIR:
-	push	iy
-	pop	hl			; hl=WorkArea
-	ld	de,WRKAREA.TRLDIR
-	add	hl,de
+	ld	l,(ix+WRKAREA.TRLDIR)
+	ld	h,(ix+WRKAREA.TRLDIR+1)
 	exx
 	ret
+
 
 
 ; ------------------------------------------------
 ; Debugging routines
 ; ------------------------------------------------
- IFDEF DEBUG
+ IFDEF DEBUG1
 PRTCHAR:
-	push	ix,iy
+	ex	af,af'
+	exx
+	push	ix,iy,af,bc,de,hl
+	exx
+	ex	af,af'
 	ld	ix,CHPUT
 	ld	iy,(EXPTBL-1)
 	call	CALSLT
-	pop	iy,ix
+	ex	af,af'
+	exx
+	pop	hl,de,bc,af,iy,ix
+	exx
+	ex	af,af'
 	ret
 PRTDOT:
 	push	af
 	ld	a,'.'
+	call	PRTCHAR
+	pop	af
+	ret
+PRTSEMIC:
+	push	af
+	ld	a,';'
 	call	PRTCHAR
 	pop	af
 	ret
@@ -2339,57 +2868,102 @@ PRTDASH:
 	call	PRTCHAR
 	pop	af
 	ret
+
+PRTHEX:
+	push	af,bc,hl
+	ld	hl,TEMP3
+	call	HexToAscii
+	ld	a,'#'
+	call	PRTCHAR
+	ld	a,(TEMP3)
+	call	PRTCHAR
+	ld	a,(TEMP3+1)
+	call	PRTCHAR
+	pop	hl,bc,af
+	ret
+
+
+PRTSTRCALL:	; Prints an inline ASCIIZ string
+	ex	(sp),hl		; hl=Pointer to inline string
+	push	af,ix,iy
+	ex	af,af'
+	exx
+	push	af,bc,de,hl
+	exx
+	ex	af,af'
+	ld	ix,CHPUT
+	ld	iy,(EXPTBL-1)
+.loop:
+	ld	a,(hl)
+	inc	hl
+	or	a
+	jr	z,.end
+	call	CALSLT
+	jr	.loop
+
+.end:	ex	af,af'
+	exx
+	pop	hl,de,bc,af
+	exx
+	ex	af,af'
+	pop	iy,ix,af
+	ex	(sp),hl
+	ret
  ENDIF
 
 
 
 ; ==========================================================================
 strTitle:
-	db	13,"FBLabs SDHC driver v",27,'J'
+	db	13,"FBLabs SDXC driver v",27,'J'
 	BYTE2STR VER_MAIN
 	db	'.'
 	BYTE2STR VER_SEC
 	db	'.'
 	BYTE2STR VER_REV
-	db	13,10,0
+	db  	13,10|$80
 
 ;		 |-------------39 chars----------------|
 strBootpaused:
-	db	"Paused. Press <i> for the copyright info",13,10,0
+	db  	"Paused. Press <i> for the copyright info",13,10|$80
 
 strCopyright:
-	db	"(c) 2014 Fabio Belavenuto",13,10
-	db	"(c) 2017 FRS",13,10
-	db	"Licenced under CERN OHL v1.1",13,10
-	db	"http://ohwr.org/cernohl",13,10
-	db	"PCB designed by Luciano Sturaro",13,10
-	; will use the CR+LF+EOS bellow 
+	db	"(c) 2014 Fabio Belavenuto",13,10|$80
+	db	"(c) 2017 FRS",13,10|$80
+	db	"Licenced under CERN OHL v1.1",13,10|$80
+	db	"http://ohwr.org/cernohl",13,10|$80
+	db	"PCB designed by Luciano Sturaro",13,10|$80
+		; will use the CR+LF+EOS bellow 
 strCrLf:
-	db	13,10,0
+	db	13,10|$80
 strCartao:
-	db	"- Slot ",0
+	ABYTEC 0	"- Slot "
 strVazio:
-	db	"Empty",13,10,0
-strNaoIdentificado:
-	db	"Unknown!",13,10,0
-;		 |-------------39 chars----------------|
+	db	"Empty",13,10|$80
+strNaoDetectado:
+	db	"Failed!",13,10|$80
+;			 |-------------39 chars----------------|
 strMr_mp_desativada:
-	db	"- Slot expander & Mem Mapper disabled",13,10,0
+	db	"- Slot expander & Mem Mapper disabled",13,10|$80
  IFDEF HASMEGARAM
 strMapper:
-	db	"- Slot expander & Mem Mapper enabled",13,10,0
+	db	"- Slot expander & Mem Mapper enabled",13,10|$80
 strMegaram:
-	db	"- Slot expander & MegaRAM enabled",13,10,0
+	db	"- Slot expander & MegaRAM enabled",13,10|$80
  ELSE
 strDrvMain:
-	db	"- Main driver selected",13,10,0
+	db	"- Main driver selected",13,10|$80
 strDrvDev:
-	db	"- Development driver selected",13,10,0
+	db	"- Development driver selected",13,10|$80
  ENDIF
 strSDV1:
-	db	"SDV1, ",0
+	ABYTEC 0 	"SDV1, ("
 strSDV2:
-	db	"SDV2, ",0
+	ABYTEC 0 	"SDV2, ("
+
+nullTxt:
+	db	"<null>"
+.end:
 
 ;-----------------------------------------------------------------------------
 ;

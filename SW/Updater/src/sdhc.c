@@ -197,7 +197,7 @@ unsigned char detectInterface(unsigned char slot)
 /******************************************************************************/
 unsigned char verifySwId(unsigned char *str)
 {
-	if (memcmp(str, "FBLabs SDHC", 11) == 0) {
+	if (memcmp(str, "FBLabs SDXC", 11) == 0) {
 		return 1;
 	}
 	return 0;
